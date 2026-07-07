@@ -1,0 +1,54 @@
+# Auto-generated macro template for one detector configuration.
+# Values in double curly brackets are replaced by scripts/config_tools.py.
+
+/control/verbose 1
+/run/verbose 1
+/event/verbose 0
+/tracking/verbose 0
+
+# ---------------------------------------------------------------------------
+# Pre-initialization settings: geometry + material/optical physics.
+# These must be set before /run/initialize because they affect constructed
+# geometry/material tables.
+# ---------------------------------------------------------------------------
+/det/setInnerRadiusCm {{inner_lar_radius_cm}}
+/det/setInnerHeightCm {{inner_lar_height_cm}}
+/det/setOuterDiameterCm {{outer_lar_diameter_cm}}
+/det/setOuterHeightCm {{outer_lar_height_cm}}
+/det/setPMTSideCm {{pmt_side_length_cm}}
+/det/setSiPMTileCm {{sipm_tile_size_cm}}
+
+/det/setAbsLengthCm {{lar_absorption_length_cm}}
+/det/setBirksMmPerMeV {{lar_birks_constant_mm_per_MeV}}
+/det/setScintYieldPerMeV {{lar_scintillation_yield_per_MeV}}
+/det/setScintYieldScale {{lar_scintillation_yield_scale}}
+/det/setFastTimeNs {{lar_fast_time_ns}}
+/det/setSlowTimeNs {{lar_slow_time_ns}}
+/det/setFastFraction {{lar_fast_fraction}}
+/det/setTPBEfficiency {{tpb_efficiency}}
+/det/setReflectorReflectivity {{reflector_reflectivity}}
+
+/run/initialize
+/process/inactivate Cerenkov
+# ---------------------------------------------------------------------------
+# Idle-state settings: sensor coverage and active detector response.
+# response_mode options: flat, builtin_curve, csv_curve.
+# For csv_curve, the file should contain either wavelength_nm,qe or energy_eV,qe.
+# The PDE value scales the curve peak; set pde: 0 to use an absolute curve as-is.
+# ---------------------------------------------------------------------------
+/det/setPMTResponseMode {{pmt_response_mode}}
+/det/setSiPMResponseMode {{sipm_response_mode}}
+/det/setPMTCurveFile {{pmt_qe_curve_file}}
+/det/setSiPMCurveFile {{sipm_qe_curve_file}}
+
+/det/setReflPMT {{pmt_reflectivity}}
+/det/setReflSiPM {{sipm_reflectivity}}
+/det/setPDETopPMT {{pmt_top_pde}}
+/det/setPDEBotPMT {{pmt_bottom_pde}}
+/det/setPDESiPM {{sipm_pde}}
+
+/det/setTopPMTs {{top_pmts}}
+/det/setBotPMTs {{bottom_pmts}}
+/det/setSiPMRows {{sipm_rows}}
+
+/run/beamOn {{n_events}}

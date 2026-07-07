@@ -1,0 +1,42 @@
+# Build directories
+build/
+build-*/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+Makefile
+cmake_install.cmake
+install_manifest.txt
+
+# Compiled files
+*.o
+*.so
+*.a
+*.d
+*.pcm
+
+# Geant4/output data
+output/
+outputs/
+*.root
+*.h5
+*.hdf5
+*.csv
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
+
+# Generated Geant4 files
+*.out
+*.bak*
+macros/generated/

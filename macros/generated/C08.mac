@@ -1,0 +1,54 @@
+# Auto-generated macro template for one detector configuration.
+# Values in double curly brackets are replaced by scripts/config_tools.py.
+
+/control/verbose 1
+/run/verbose 1
+/event/verbose 0
+/tracking/verbose 0
+
+# ---------------------------------------------------------------------------
+# Pre-initialization settings: geometry + material/optical physics.
+# These must be set before /run/initialize because they affect constructed
+# geometry/material tables.
+# ---------------------------------------------------------------------------
+/det/setInnerRadiusCm 5.0
+/det/setInnerHeightCm 10.0
+/det/setOuterDiameterCm 35.0
+/det/setOuterHeightCm 70.0
+/det/setPMTSideCm 2.54
+/det/setSiPMTileCm 0.6
+
+/det/setAbsLengthCm 150.0
+/det/setBirksMmPerMeV 0.03
+/det/setScintYieldPerMeV 51300.0
+/det/setScintYieldScale 0.3
+/det/setFastTimeNs 7.0
+/det/setSlowTimeNs 1500.0
+/det/setFastFraction 0.75
+/det/setTPBEfficiency 1.0
+/det/setReflectorReflectivity 0.98
+
+/run/initialize
+/process/inactivate Cerenkov
+# ---------------------------------------------------------------------------
+# Idle-state settings: sensor coverage and active detector response.
+# response_mode options: flat, builtin_curve, csv_curve.
+# For csv_curve, the file should contain either wavelength_nm,qe or energy_eV,qe.
+# The PDE value scales the curve peak; set pde: 0 to use an absolute curve as-is.
+# ---------------------------------------------------------------------------
+/det/setPMTResponseMode builtin_curve_raw
+/det/setSiPMResponseMode builtin_curve_raw
+/det/setPMTCurveFile none
+/det/setSiPMCurveFile none
+
+/det/setReflPMT 0.2
+/det/setReflSiPM 0.4
+/det/setPDETopPMT 0.266
+/det/setPDEBotPMT 0.266
+/det/setPDESiPM 0.402
+
+/det/setTopPMTs 4
+/det/setBotPMTs 4
+/det/setSiPMRows 1
+
+/run/beamOn 500000

@@ -1,0 +1,71 @@
+run:
+  executable: ./TestEm5
+  build_dir: build-mt
+  output_dir: output/tau_lab_example
+  n_events: 1000
+  n_threads: 1
+  random_seed: 12345
+  macro_template: macros/template_run.mac
+  generated_macro_dir: macros/generated
+
+geometry:
+  inner_lar:
+    radius_cm: 5.0
+    height_cm: 10.0
+  outer_lar:
+    diameter_cm: 35.0
+    height_cm: 70.0
+
+optics:
+  lar:
+    scintillation_yield_per_MeV: 51300.0
+    scintillation_yield_scale: 1.0
+    absorption_length_cm: 150.0
+    fast_time_ns: 7.0
+    slow_time_ns: 1500.0
+    fast_fraction: 0.75
+    birks_constant_mm_per_MeV: 0.03
+  tpb:
+    # Geant4 WLSMEANNUMBERPHOTONS. Use 1.0 to reproduce the original code.
+    efficiency: 1.0
+  reflector:
+    # Used for inactive PMT/SiPM patches.
+    reflectivity: 0.95
+
+sensors:
+  pmt:
+    side_length_cm: 2.54
+    reflectivity: 0.10
+    # response_mode options:
+    #   flat              -> use one constant PDE value
+    #   builtin_curve     -> scale built-in curve peak to the requested PDE
+    #   builtin_curve_raw -> use the built-in curve exactly as coded; PDE values are ignored
+    #   csv_curve         -> scale the CSV curve peak to the requested PDE
+    #   csv_curve_raw     -> use the CSV curve as an absolute curve; PDE value is ignored
+    response_mode: builtin_curve
+    pde: 0.266
+    top_pde: 0.266
+    bottom_pde: 0.266
+    # CSV format: wavelength_nm,qe or energy_eV,qe. qe can be fraction or percent.
+    qe_curve_file: none
+  sipm:
+    tile_size_cm: 0.6
+    reflectivity: 0.10
+    # response_mode options are the same as for PMTs.
+    response_mode: builtin_curve
+    pde: 0.35
+    qe_curve_file: none
+
+selection:
+  require_detected: true
+  require_num_pe_positive: true
+  tof_window_ns: [40.0, 50.0]
+  reject_inelastic_sensitive: true
+  reject_external_scatter: false
+
+analysis:
+  expected_event_file_patterns:
+    - "numPE_*.csv"
+    - "event_summary*.csv"
+  make_plots: true
+  figure_format: png
