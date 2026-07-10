@@ -52,6 +52,7 @@ class PrimaryGeneratorAction : public G4VUserPrimaryGeneratorAction
   public:
     void SetDefaultKinematic();
     void SetRndmBeam(G4double val) {fRndmBeam = val;};   
+    void SetParticleEnergy(G4double val) {fParticleGun->SetParticleEnergy(val);};
     virtual void GeneratePrimaries(G4Event*);
     G4ParticleGun* GetParticleGun() const {return fParticleGun;};
     void SetOptPhotonPolar();
@@ -72,4 +73,3 @@ class PrimaryGeneratorAction : public G4VUserPrimaryGeneratorAction
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 #endif
-

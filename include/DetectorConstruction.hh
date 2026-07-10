@@ -50,6 +50,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <vector>
 
 class G4Box;
 class G4VPhysicalVolume;
@@ -121,9 +122,28 @@ class DetectorConstruction : public G4VUserDetectorConstruction
   G4double fOuterDiameter = 35.0 * CLHEP::cm;
   G4double fOuterHeight = 70.0 * CLHEP::cm;
 
+  struct NeutronDetectorConfig {
+    G4String name;
+    G4double angle;
+    G4double distance;
+  };
+
+  std::vector<NeutronDetectorConfig> fNeutronDetectors = {
+    {"A0", 25.0 * CLHEP::deg, 100.0 * CLHEP::cm},
+    {"A1", 40.0 * CLHEP::deg, 100.0 * CLHEP::cm},
+    {"A2", 50.0 * CLHEP::deg, 100.0 * CLHEP::cm},
+    {"A3", 60.0 * CLHEP::deg, 100.0 * CLHEP::cm},
+    {"A4", 90.0 * CLHEP::deg, 100.0 * CLHEP::cm},
+  };
+
   // ------------------ Sensor geometry config ------------------
   G4double fPMTSide = 2.54 * CLHEP::cm;
   G4double fSiPMTile = 0.6 * CLHEP::cm;
+
+  // ------------------ Event-selection config ------------------
+  G4double fTOFMinNs = 40.0;
+  G4double fTOFMaxNs = 50.0;
+  G4double fPrimaryEnergy = 2.5 * CLHEP::MeV;
 
   // ------------------ Optical/scintillation config ------------------
   G4double fLArScintYieldPerMeV = 51300.0;
@@ -210,8 +230,79 @@ public:
   void SetOuterDiameterCm(G4double v) { fOuterDiameter = v * CLHEP::cm; }
   void SetOuterHeightCm(G4double v) { fOuterHeight = v * CLHEP::cm; }
 
+  void SetNeutronDetectors(const G4String& value) {
+      std::vector<NeutronDetectorConfig> detectors;
+      std::stringstream entries(value);
+      std::string entry;
+      G4int index = 0;
+
+      while (std::getline(entries, entry, ';')) {
+          entry.erase(std::remove_if(entry.begin(), entry.end(), ::isspace), entry.end());
+          if (entry.empty()) {
+              continue;
+          }
+
+          std::vector<std::string> parts;
+          std::stringstream fields(entry);
+          std::string field;
+          while (std::getline(fields, field, ':')) {
+              parts.push_back(field);
+          }
+
+          if (parts.size() == 2) {
+              parts.insert(parts.begin(), "A" + std::to_string(index));
+          }
+          if (parts.size() != 3) {
+              G4cerr << "Ignoring malformed neutron detector entry: " << entry << G4endl;
+              continue;
+          }
+
+          detectors.push_back({
+              parts[0],
+              std::stod(parts[1]) * CLHEP::deg,
+              std::stod(parts[2]) * CLHEP::cm,
+          });
+          ++index;
+      }
+
+      fNeutronDetectors = detectors;
+  }
+
+  G4bool IsNeutronDetectorName(const G4String& name) const {
+      for (const auto& detector : fNeutronDetectors) {
+          if (detector.name == name) {
+              return true;
+          }
+      }
+      return false;
+  }
+
   void SetPMTSideCm(G4double v) { fPMTSide = v * CLHEP::cm; }
   void SetSiPMTileCm(G4double v) { fSiPMTile = v * CLHEP::cm; }
+
+  void SetTOFWindowNs(G4double minNs, G4double maxNs) {
+      if (minNs >= maxNs) {
+          G4cerr << "Ignoring invalid TOF window: " << minNs << " " << maxNs << G4endl;
+          return;
+      }
+      fTOFMinNs = minNs;
+      fTOFMaxNs = maxNs;
+      G4cout << "Configured TOF window: [" << fTOFMinNs << ", " << fTOFMaxNs << "] ns" << G4endl;
+  }
+
+  G4double GetTOFMinNs() const { return fTOFMinNs; }
+  G4double GetTOFMaxNs() const { return fTOFMaxNs; }
+
+  void SetPrimaryEnergyMeV(G4double energyMeV) {
+      if (energyMeV <= 0.0) {
+          G4cerr << "Ignoring invalid primary energy: " << energyMeV << " MeV" << G4endl;
+          return;
+      }
+      fPrimaryEnergy = energyMeV * CLHEP::MeV;
+      G4cout << "Configured primary energy: " << energyMeV << " MeV" << G4endl;
+  }
+
+  G4double GetPrimaryEnergy() const { return fPrimaryEnergy; }
 
   void SetAbsLengthCm(G4double v) {
       fLArAbsLength = v * CLHEP::cm;
@@ -463,4 +554,3 @@ private:
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 #endif
-

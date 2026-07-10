@@ -152,6 +152,7 @@ void SteppingAction::UserSteppingAction(const G4Step* aStep)
   auto postLV = postPV->GetLogicalVolume();
   auto preName = prePV->GetName();
   auto postName = postPV->GetName();
+  const G4bool isNeutronDetector = fDetector->IsNeutronDetectorName(volumeName);
   G4Track* track = aStep->GetTrack();
   G4int stepNo = track->GetCurrentStepNumber();
 
@@ -370,14 +371,10 @@ std::cout << "after 2B)" << std::endl;
 	  //if (post->GetStepStatus() == fGeomBoundary) {
               //if (verbose1) std::cout << "at fGeomBoundary" << std::endl;
 
-            //if (preName == "A0" || preName == "A1" || preName == "A2" || preName == "A3" || preName == "A4") { 
-                // Decide based on QE and reflectivity (depending on your setup)
-              //  if (G4UniformRand() < 0.25 && t < fEventAction->tOneEx) {  // Apply some QE, e.g. 25%
-                  // Mark this photon as detected (tOneEx) and log if needed
-                //  fEventAction->tOneEx = t;
-                  //std::cout << " in event " << eventID << ", tOneEx = " << fEventAction->tOneEx << " ns" << std::endl;
-                //}
-            //}
+            // Decide based on QE and reflectivity (depending on your setup)
+            //  if (G4UniformRand() < 0.25 && t < fEventAction->tOneEx) {  // Apply some QE, e.g. 25%
+            //    fEventAction->tOneEx = t;
+            //  }
 
             //G4OpBoundaryProcess* boundary = nullptr;
 
@@ -641,7 +638,7 @@ std::cout << "after hmm2)" << std::endl;
 
 
       // if a neutron has an interaction with the liquid scintillator
-      if (!fEventAction->detected && trans.compare(processName) != 0 && (volumeName == "A0" || volumeName == "A1" || volumeName == "A2" || volumeName == "A3" || volumeName == "A4")){ 
+      if (!fEventAction->detected && trans.compare(processName) != 0 && isNeutronDetector){ 
           //std::cout << "interaction with Ax" << std::endl;
           //printEventStats(aStep,0);
 
@@ -697,4 +694,3 @@ G4cout << "Step end: proc=" << pname
        return within;
    }
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
-

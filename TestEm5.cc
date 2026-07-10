@@ -156,8 +156,10 @@ G4String macroFile = "";
   //set user action classes
   runManager->SetUserInitialization(new ActionInitialization(detector));
 
-  //initialize visualization
-  G4VisManager* visManager = nullptr;
+  // Initialize visualization before processing macros so /vis commands are available
+  // in both interactive sessions and visualization macro runs.
+  G4VisManager* visManager = new G4VisExecutive;
+  visManager->Initialize();
 
   //get the pointer to the User Interface manager
   G4UImanager* UImanager = G4UImanager::GetUIpointer();
@@ -169,8 +171,6 @@ G4String macroFile = "";
 }
 else if (ui) {
   // interactive mode
-  visManager = new G4VisExecutive;
-  visManager->Initialize();
   ui->SessionStart();
   delete ui;
 }
@@ -180,4 +180,3 @@ else if (ui) {
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
-

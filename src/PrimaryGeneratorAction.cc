@@ -82,7 +82,7 @@ void PrimaryGeneratorAction::SetDefaultKinematic()
   //G4ParticleDefinition* ion = G4IonTable::GetIonTable()->GetIon(18,40,0);
   fParticleGun->SetParticleDefinition(particle);
   fParticleGun->SetParticleMomentumDirection(G4ThreeVector(1.,0.,0.));
-  fParticleGun->SetParticleEnergy(2.5*MeV);
+  fParticleGun->SetParticleEnergy(fDetector->GetPrimaryEnergy());
   //fParticleGun->SetParticleEnergy(117.8*keV);
   //fParticleGun->SetParticleEnergy(511.0*keV);
   //fParticleGun->SetParticlePolarization(G4ThreeVector(0,1,0));
@@ -143,6 +143,9 @@ void PrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)
     fParticleGun->SetParticlePosition(G4ThreeVector(x0, 0.0, 0.0));  
     //fParticleGun->SetParticleMomentumDirection(G4ThreeVector(1,0,0));
     fParticleGun->SetParticleMomentumDirection(G4ThreeVector(1,0,0));
+    G4cout << "Primary gun energy: "
+           << fParticleGun->GetParticleEnergy()/CLHEP::MeV
+           << " MeV" << G4endl;
   }
   //this function is called at the begining of event
   //

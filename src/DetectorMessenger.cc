@@ -5,6 +5,8 @@
 #include "G4UIcmdWithADouble.hh"
 #include "G4UIcmdWithAString.hh"
 
+#include <sstream>
+
 DetectorMessenger::DetectorMessenger(DetectorConstruction* det, Run* run)
     : G4UImessenger(), fDetector(det), fRun(run) {
 
@@ -36,6 +38,22 @@ DetectorMessenger::DetectorMessenger(DetectorConstruction* det, Run* run)
   fOuterHeightCmd->SetParameterName("OuterHeightCm", false);
   fOuterHeightCmd->SetRange("OuterHeightCm>0.");
   fOuterHeightCmd->AvailableForStates(G4State_PreInit);
+
+  fNeutronDetectorsCmd = new G4UIcmdWithAString("/det/setNeutronDetectors", this);
+  fNeutronDetectorsCmd->SetGuidance("Set neutron liquid scintillators as label:angle_deg:distance_cm;...");
+  fNeutronDetectorsCmd->SetParameterName("NeutronDetectors", false);
+  fNeutronDetectorsCmd->AvailableForStates(G4State_PreInit);
+
+  fTOFWindowCmd = new G4UIcmdWithAString("/det/setTOFWindowNs", this);
+  fTOFWindowCmd->SetGuidance("Set event TOF selection window in ns as: min max");
+  fTOFWindowCmd->SetParameterName("TOFWindowNs", false);
+  fTOFWindowCmd->AvailableForStates(G4State_PreInit, G4State_Idle);
+
+  fPrimaryEnergyCmd = new G4UIcmdWithADouble("/det/setPrimaryEnergyMeV", this);
+  fPrimaryEnergyCmd->SetGuidance("Set primary neutron kinetic energy in MeV.");
+  fPrimaryEnergyCmd->SetParameterName("PrimaryEnergyMeV", false);
+  fPrimaryEnergyCmd->SetRange("PrimaryEnergyMeV>0.");
+  fPrimaryEnergyCmd->AvailableForStates(G4State_PreInit, G4State_Idle);
 
   fPMTSideCmd = new G4UIcmdWithADouble("/det/setPMTSideCm", this);
   fPMTSideCmd->SetGuidance("Set square PMT side length in cm.");
@@ -218,6 +236,9 @@ DetectorMessenger::~DetectorMessenger() {
   delete fInnerHeightCmd;
   delete fOuterDiameterCmd;
   delete fOuterHeightCmd;
+  delete fNeutronDetectorsCmd;
+  delete fTOFWindowCmd;
+  delete fPrimaryEnergyCmd;
   delete fPMTSideCmd;
   delete fSiPMTileCmd;
   delete fAbsLengthCmCmd;
@@ -255,6 +276,19 @@ void DetectorMessenger::SetNewValue(G4UIcommand* command, G4String newValue) {
         fDetector->SetOuterDiameterCm(fOuterDiameterCmd->GetNewDoubleValue(newValue));
     } else if (command == fOuterHeightCmd) {
         fDetector->SetOuterHeightCm(fOuterHeightCmd->GetNewDoubleValue(newValue));
+    } else if (command == fNeutronDetectorsCmd) {
+        fDetector->SetNeutronDetectors(newValue);
+    } else if (command == fTOFWindowCmd) {
+        std::stringstream ss(newValue);
+        G4double minNs = 0.0;
+        G4double maxNs = 0.0;
+        if (ss >> minNs >> maxNs) {
+            fDetector->SetTOFWindowNs(minNs, maxNs);
+        } else {
+            G4cerr << "Invalid TOF window: " << newValue << G4endl;
+        }
+    } else if (command == fPrimaryEnergyCmd) {
+        fDetector->SetPrimaryEnergyMeV(fPrimaryEnergyCmd->GetNewDoubleValue(newValue));
     } else if (command == fPMTSideCmd) {
         fDetector->SetPMTSideCm(fPMTSideCmd->GetNewDoubleValue(newValue));
     } else if (command == fSiPMTileCmd) {

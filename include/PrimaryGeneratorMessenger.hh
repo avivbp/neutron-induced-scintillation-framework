@@ -40,6 +40,7 @@ class PrimaryGeneratorAction;
 class G4UIdirectory;
 class G4UIcmdWithoutParameter;
 class G4UIcmdWithADouble;
+class G4UIcmdWithADoubleAndUnit;
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -56,10 +57,10 @@ class PrimaryGeneratorMessenger: public G4UImessenger
     
     G4UIdirectory*             fGunDir;      
     G4UIcmdWithoutParameter*   fDefaultCmd;
+    G4UIcmdWithADoubleAndUnit* fEnergyCmd;
     G4UIcmdWithADouble*        fRndmCmd;    
 };
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 #endif
-

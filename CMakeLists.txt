@@ -46,7 +46,7 @@ target_link_libraries(LArLightSim ${Geant4_LIBRARIES} ${HBOOK_LIBRARIES})
 # relies on these scripts being in the current working directory.
 #
 set(TestEm5_SCRIPTS
-    acosta.mac anthony.mac atima.mac berger.mac bichsel.mac dedx1.mac dedx2.mac dna.mac gammaSpectrum.mac geom.mac gottsch.mac hanson.mac hunger.mac ion.mac kulchi.mac mumsc.mac mutev.mac pixe.mac pixe_ANSTO.mac shen1.mac shen2.mac stepMax.mac tavora.mac TestEm5.in tramu.mac vincour.mac vis.mac pixe.C plotHisto.C)
+    vis.mac )
 
 foreach(_script ${TestEm5_SCRIPTS})
   configure_file(

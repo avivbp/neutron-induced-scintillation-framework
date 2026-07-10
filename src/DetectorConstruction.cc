@@ -994,20 +994,11 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   //new G4LogicalBorderSurface("LAr->Top",  tpbPV, topPV, reflTop);
   //new G4LogicalBorderSurface("LAr->Bot",  tpbPV, botPV, reflBot);
 
-  // placing liquid scintillators at different angles to detect neutrons
-  G4double angleArr[5] = {0.4363,0.6981,0.8727,1.0472,1.5708};
-  G4double distances[5] = {1.0*m,1.0*m,1.0*m,1.0*m,1.0*m};
-  G4ThreeVector vectArr[5];
-  for(int i = 0;i<=4;i++){
-      vectArr[i] = G4ThreeVector(distances[i],0.,0.);
-  }   
-
-  for(int i = 0;i<=4;i++){
-      std::stringstream ss;
-      ss << "A" << i;
-      std::string fibName = ss.str();
+  // placing liquid scintillators at configured angles to detect neutrons
+  for(const auto& detector : fNeutronDetectors){
+      G4ThreeVector position(detector.distance, 0., 0.);
       std::cout << "fiber diameter = " << fiberDiameter << " cm" << std::endl;
-      placeLiquidScintillator(vectArr[i],angleArr[i],fiberDiameter,fiberLength,fiberMat,airLogic,fibName);
+      placeLiquidScintillator(position, detector.angle, fiberDiameter, fiberLength, fiberMat, airLogic, detector.name);
   } 
 
 

@@ -3,13 +3,16 @@ run:
   build_dir: build-mt
   output_dir: output/tau_lab_example
   n_events: 500000
-  n_threads: 7
+  n_threads: 11
   random_seed: 12345
   macro_template: macros/template_run.mac
   generated_macro_dir: macros/generated
 
 physics:
   inactivate_cerenkov: true
+
+beam:
+  primary_energy_MeV: 14
 
 geometry:
   inner_lar:
@@ -18,6 +21,28 @@ geometry:
   outer_lar:
     diameter_cm: 35.0
     height_cm: 70.0
+  neutron_detectors:
+    - label: A0
+      angle_deg: 25.0
+      distance_cm: 100.0
+    - label: A1
+      angle_deg: 40.0
+      distance_cm: 100.0
+    - label: A2
+      angle_deg: 50.0
+      distance_cm: 100.0
+    - label: A3
+      angle_deg: 60.0
+      distance_cm: 100.0
+    - label: A4
+      angle_deg: 90.0
+      distance_cm: 100.0
+    - label: A5
+      angle_deg: 120.0
+      distance_cm: 100.0
+    - label: A6
+      angle_deg: 180.0
+      distance_cm: 100.0
 
 optics:
   lar:
@@ -63,7 +88,7 @@ sensors:
 selection:
   require_detected: true
   require_num_pe_positive: true
-  tof_window_ns: [40.0, 50.0]
+  tof_window_ns: [16.538, 23.518]
   reject_inelastic_sensitive: true
   reject_external_scatter: false
 

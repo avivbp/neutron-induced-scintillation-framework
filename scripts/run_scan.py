@@ -71,7 +71,7 @@ def main() -> None:
         if args.dry_run:
             continue
         n_threads = str(config.get("run", {}).get("n_threads", 1))
-        run([str(exe_path), str(macro_path), n_threads])
+        run([str(exe_path), str(macro_path), n_threads], cwd=outdir)
 
     write_json(outdir / "scan_metadata.json", metadata)
 
@@ -79,7 +79,7 @@ def main() -> None:
         run([
             "python3", "scripts/analyze_money_plot.py",
             "--config", args.config,
-            "--input-dir", str(root),
+            "--input-dir", str(outdir),
             "--output-dir", str(outdir),
         ])
 

@@ -15,8 +15,11 @@
 /det/setInnerHeightCm 10.0
 /det/setOuterDiameterCm 35.0
 /det/setOuterHeightCm 70.0
+/det/setNeutronDetectors A0:25:100;A1:40:100;A2:50:100;A3:60:100;A4:90:100;A5:120:100;A6:180:100
 /det/setPMTSideCm 2.54
 /det/setSiPMTileCm 0.6
+/det/setTOFWindowNs 16.538 23.518
+/det/setPrimaryEnergyMeV 14.0
 
 /det/setAbsLengthCm 150.0
 /det/setBirksMmPerMeV 0.03
@@ -41,7 +44,7 @@
 /det/setPMTCurveFile none
 /det/setSiPMCurveFile none
 
-/det/setReflPMT 0.35
+/det/setReflPMT 0.2
 /det/setReflSiPM 0.4
 /det/setPDETopPMT 0.266
 /det/setPDEBotPMT 0.266
@@ -51,4 +54,4 @@
 /det/setBotPMTs 3
 /det/setSiPMRows 0
 
-/run/beamOn 300000
+/run/beamOn 500000

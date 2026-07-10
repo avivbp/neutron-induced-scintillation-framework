@@ -56,6 +56,38 @@ def deep_get(data: Mapping[str, Any], dotted_key: str, default: Any = None) -> A
     return current
 
 
+def neutron_detector_macro_value(config: Mapping[str, Any]) -> str:
+    detectors = deep_get(config, "geometry.neutron_detectors", None)
+    if detectors is None:
+        detectors = [
+            {"label": "A0", "angle_deg": 25.0, "distance_cm": 100.0},
+            {"label": "A1", "angle_deg": 40.0, "distance_cm": 100.0},
+            {"label": "A2", "angle_deg": 50.0, "distance_cm": 100.0},
+            {"label": "A3", "angle_deg": 60.0, "distance_cm": 100.0},
+            {"label": "A4", "angle_deg": 90.0, "distance_cm": 100.0},
+        ]
+    if not isinstance(detectors, list):
+        raise ValueError("geometry.neutron_detectors must be a list.")
+
+    entries: list[str] = []
+    for index, detector in enumerate(detectors):
+        if not isinstance(detector, Mapping):
+            raise ValueError("Each neutron detector must be a mapping.")
+        label = str(detector.get("label", f"A{index}"))
+        angle = float(detector["angle_deg"])
+        distance = float(detector["distance_cm"])
+        entries.append(f"{label}:{angle:g}:{distance:g}")
+    return ";".join(entries)
+
+
+def tof_window_macro_value(config: Mapping[str, Any]) -> str:
+    window = deep_get(config, "selection.tof_window_ns", [40.0, 50.0])
+    if not isinstance(window, (list, tuple)) or len(window) != 2:
+        raise ValueError("selection.tof_window_ns must contain exactly two values.")
+    lo, hi = float(window[0]), float(window[1])
+    return f"{lo:g} {hi:g}"
+
+
 def flatten_for_template(config: Mapping[str, Any], row: Mapping[str, Any]) -> Dict[str, Any]:
     """Return all token values needed by macros/template_run.mac."""
     inner_r = float(deep_get(config, "geometry.inner_lar.radius_cm", 5.0))
@@ -93,6 +125,11 @@ def flatten_for_template(config: Mapping[str, Any], row: Mapping[str, Any]) -> D
         "outer_lar_height_cm": outer_h,
         "outer_diameter_cm": outer_d,
         "outer_height_cm": outer_h,
+        "neutron_detector_config": neutron_detector_macro_value(config),
+
+        # Beam and event-selection cuts
+        "primary_energy_MeV": float(deep_get(config, "beam.primary_energy_MeV", 2.5)),
+        "tof_window_ns": tof_window_macro_value(config),
 
         # LAr optics/scintillation
         "lar_absorption_length_cm": float(deep_get(config, "optics.lar.absorption_length_cm", 150.0)),

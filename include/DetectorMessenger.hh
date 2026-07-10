@@ -47,7 +47,10 @@ private:
     G4UIcmdWithADouble* fInnerHeightCmd      = nullptr;
     G4UIcmdWithADouble* fOuterDiameterCmd    = nullptr;
     G4UIcmdWithADouble* fOuterHeightCmd      = nullptr;
+    G4UIcmdWithAString* fNeutronDetectorsCmd = nullptr;
     G4UIcmdWithADouble* fPMTSideCmd          = nullptr;
+    G4UIcmdWithAString* fTOFWindowCmd        = nullptr;
+    G4UIcmdWithADouble* fPrimaryEnergyCmd    = nullptr;
     G4UIcmdWithADouble* fSiPMTileCmd         = nullptr;
     G4UIcmdWithADouble* fAbsLengthCmCmd      = nullptr;
     G4UIcmdWithADouble* fBirksMmPerMeVCmd    = nullptr;
@@ -67,4 +70,3 @@ private:
 };
 
 #endif
-

@@ -204,19 +204,35 @@ void EventAction::EndOfEventAction(const G4Event* evt)
   //run->csvfi << eventID << "," << ExtScatter << "," << CryoScatter << "," << innerLayerScatter << "," << outerCellScatterAngle << "," << CryoScatterAngle << "," << outerCellEDep << "," << CryoEDep << "," << innerLayerEDep << "," << numElasticSensitive << "," << numInelasticSensitive << "," << innerCellEDep << "," << fiducialIncomingEn << "," << extScatterBefore << "," << extScatterAfter << "," << escapeEn << "," << incomingAng << "," << good << "," << std::endl;
   //run->csvfi.close();
 
-  // to be changed based on single elastic scatter tof
-  G4int earlyCutoff = 40.*CLHEP::ns;
-  G4int lateCutoff = 50.*CLHEP::ns;
+  G4double earlyCutoff = det->GetTOFMinNs();
+  G4double lateCutoff = det->GetTOFMaxNs();
   G4double tof = tOne - tZeroEx; // using tOne to save runtime on optical photons, tOne - tOneEx ~ O(0.1 [ns])
 
   //if (tOne < 1000 && tZeroEx < 1000) std::cout << "tOne = " << tOne << ", tZeroEx = " << tZeroEx << ", tof = " << tOne - tZeroEx << std::endl;
   //std::cout << "after tof calc" << std::endl;
 
-  G4int earlyCutoffNoScint = 40.*CLHEP::ns;
-  G4int lateCutoffNoScint = 50.*CLHEP::ns;
+  G4double earlyCutoffNoScint = earlyCutoff;
+  G4double lateCutoffNoScint = lateCutoff;
   G4double tofNoScint = tOne - tZero;
+  const G4bool passTOFNoScintWrite =
+      (tofNoScint > earlyCutoffNoScint) && (tofNoScint < lateCutoffNoScint) && detected;
+  const G4bool passNumPEWrite =
+      numPE != 0 && detected && (tof > earlyCutoff) && (tof < lateCutoff);
+
+  if (detected && tZeroEx != 10000) {
+      G4cout << "[TOF debug] event=" << eventID
+             << " detector=" << detector
+             << " tOne=" << tOne << " ns"
+             << " tZeroEx=" << tZeroEx << " ns"
+             << " tof=" << tof << " ns"
+             << " window=[" << earlyCutoff << ", " << lateCutoff << "] ns"
+             << " numPE=" << numPE
+             << " pass_numPE_csv=" << passNumPEWrite
+             << G4endl;
+  }
+
   // single elastic scatter, neutron detected by liquid scintillator
-  if ((tofNoScint > earlyCutoffNoScint) && (tofNoScint < lateCutoffNoScint) && detected){
+  if (passTOFNoScintWrite){
       run->csvfi.open("tof.csv",std::ios_base::app);
       run->csvfi << eventID << "," << tofNoScint << "," << detector << "," << numElasticSensitive << "," << ExtScatter << "," << CryoScatter << "," << innerLayerScatter << "," << std::endl;
       run->csvfi.close();
@@ -230,7 +246,7 @@ void EventAction::EndOfEventAction(const G4Event* evt)
   ss << "numPE_" << nPMTsTop << "_topPMTs_" << nPMTsBot << "_botPMTs_" << nSiPMRows << "_SiPMRows.csv";
   std::string filename = ss.str();
 
-  if (numPE != 0 && detected && (tof > earlyCutoff) && (tof < lateCutoff)){
+  if (passNumPEWrite){
       run->csvfi.open(filename,std::ios_base::app);
       run->csvfi << eventID << "," << numPE << "," << numPhotons << "," << eDep << "," << numElasticSensitive << "," << numInelastic << "," << nCapture << "," << tof << "," << detector << "," << nucleusRecoilEnergy << "," << scatteredNotSensitive << "," << numInelasticSensitive << "," << std::endl;
       run->csvfi.close();
@@ -296,4 +312,3 @@ void EventAction::EndOfEventAction(const G4Event* evt)
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
-

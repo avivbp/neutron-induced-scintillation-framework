@@ -10,7 +10,7 @@ For every optical configuration, the script computes:
 
 Plots produced:
   1. One combined plot using all detector labels together.
-  2. One plot for each neutron detector A0, A1, A2, A3 and A4.
+  2. One plot for each configured or observed neutron detector.
 
 All plots include the same hard-coded, detector-independent PE threshold bands.
 
@@ -36,14 +36,6 @@ import pandas as pd
 import yaml
 
 
-DETECTORS = ("A0", "A1", "A2", "A3", "A4")
-NEUTRON_ENERGY_DEPOSIT_KEV = {
-    "A0": 11.5,
-    "A1": 28.5,
-    "A2": 43.4,
-    "A3": 60.5,
-    "A4": 119.5,
-}
 PE_COLUMN_CANDIDATES = ("numPE", "nPE", "pe", "PE")
 
 # Hard-coded literature-motivated PE threshold bands.
@@ -68,6 +60,49 @@ def nested(config: dict, keys: tuple[str, ...], default):
             return default
         value = value[key]
     return value
+
+
+def configured_neutron_detectors(config: dict) -> list[dict]:
+    detectors = nested(config, ("geometry", "neutron_detectors"), None)
+    if detectors is None:
+        detectors = [
+            {"label": "A0", "angle_deg": 25.0, "distance_cm": 100.0},
+            {"label": "A1", "angle_deg": 40.0, "distance_cm": 100.0},
+            {"label": "A2", "angle_deg": 50.0, "distance_cm": 100.0},
+            {"label": "A3", "angle_deg": 60.0, "distance_cm": 100.0},
+            {"label": "A4", "angle_deg": 90.0, "distance_cm": 100.0},
+        ]
+    if not isinstance(detectors, list):
+        return []
+    return [
+        detector
+        for detector in detectors
+        if isinstance(detector, dict) and "label" in detector
+    ]
+
+
+def detector_labels_for_analysis(config: dict, observed: pd.Series) -> list[str]:
+    labels = [
+        str(detector["label"]).strip()
+        for detector in configured_neutron_detectors(config)
+    ]
+    for detector in sorted(observed.dropna().astype(str).str.strip().unique()):
+        if detector and detector not in labels:
+            labels.append(detector)
+    return labels
+
+
+def detector_plot_title(config: dict, detector_label: str) -> str:
+    for detector in configured_neutron_detectors(config):
+        if str(detector.get("label", "")).strip() == detector_label:
+            angle = detector.get("angle_deg")
+            distance = detector.get("distance_cm")
+            if angle is not None and distance is not None:
+                return (
+                    f"Neutron detector {detector_label}: "
+                    f"{float(angle):g} deg, {float(distance):g} cm"
+                )
+    return f"Neutron detector {detector_label}"
 
 
 def parse_optical_configuration(path: Path) -> tuple[int, int, int] | None:
@@ -223,6 +258,7 @@ def load_summaries(
         raise FileNotFoundError(
             f"No numPE files were found directly in {input_dir}"
         )
+    print(f"[analysis] found {len(files)} numPE files in {input_dir}")
 
     combined_rows: list[dict] = []
     detector_rows: list[dict] = []
@@ -293,7 +329,7 @@ def load_summaries(
 
         detector_labels = frame["detector"].astype(str).str.strip()
 
-        for detector in DETECTORS:
+        for detector in detector_labels_for_analysis(config, detector_labels):
             mask = detector_labels.eq(detector)
             detector_values = pd.to_numeric(
                 frame.loc[mask, pe_column],
@@ -328,6 +364,13 @@ def load_summaries(
 
     combined = pd.DataFrame(combined_rows)
     by_detector = pd.DataFrame(detector_rows)
+
+    if combined.empty:
+        raise SystemExit(
+            f"Found {len(files)} numPE files in {input_dir}, but none "
+            "contained valid PE event rows. Check whether the simulation "
+            "produced only headers or wrote event CSVs to another directory."
+        )
 
     if not combined.empty:
         combined = combined.sort_values(
@@ -481,7 +524,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Plot mean photoelectrons versus optical coverage, combined "
-            "and separately for neutron detectors A0-A4."
+            "and separately for each neutron detector."
         )
     )
     parser.add_argument(
@@ -585,11 +628,11 @@ def main() -> None:
     if by_detector.empty or "detector" not in by_detector.columns:
         print(
             "[analysis] warning: no detector-specific data were found; "
-            "no A0-A4 plots were created"
+            "no neutron-detector plots were created"
         )
         return
 
-    for detector in DETECTORS:
+    for detector in by_detector["detector"].dropna().astype(str).unique():
         subset = by_detector[by_detector["detector"] == detector].copy()
         if subset.empty:
             print(f"[analysis] warning: no data found for detector {detector}")
@@ -601,10 +644,7 @@ def main() -> None:
             / f"coverage_vs_mean_pe_detector_{detector}.png",
             uncertainty=args.uncertainty,
             confidence=args.bootstrap_confidence,
-            title=(
-                f"Neutron energy deposit: "
-                f"{NEUTRON_ENERGY_DEPOSIT_KEV[detector]:g} keV"
-            ),
+            title=detector_plot_title(config, detector),
         )
 
 

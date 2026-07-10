@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""Calculate single-elastic-scatter neutron TOF cuts.
+
+Usage:
+    python3 calcCuts 2.5 100
+
+Inputs are neutron kinetic energy in MeV and neutron-detector distance in cm.
+"""
+from __future__ import annotations
+
+import argparse
+import math
+import re
+from pathlib import Path
+
+
+NEUTRON_MASS_MEV = 939.56542052
+SPEED_OF_LIGHT_CM_PER_NS = 29.9792458
+
+
+def recoil_energy_mev(initial_energy_mev: float, argon_a: float, theta_rad: float) -> float:
+    return (
+        2.0
+        * initial_energy_mev
+        * argon_a
+        / (1.0 + argon_a) ** 2
+        * (1.0 - math.cos(theta_rad))
+    )
+
+
+def beta_from_kinetic_energy(kinetic_energy_mev: float) -> float:
+    if kinetic_energy_mev <= 0.0:
+        raise ValueError("kinetic energy must be positive")
+    gamma = 1.0 + kinetic_energy_mev / NEUTRON_MASS_MEV
+    return math.sqrt(1.0 - 1.0 / (gamma * gamma))
+
+
+def tof_ns(distance_cm: float, kinetic_energy_mev: float) -> float:
+    if distance_cm <= 0.0:
+        raise ValueError("distance must be positive")
+    beta = beta_from_kinetic_energy(kinetic_energy_mev)
+    return distance_cm / (beta * SPEED_OF_LIGHT_CM_PER_NS)
+
+
+def _set_section_value(text: str, section: str, key: str, value: str) -> str:
+    section_match = re.search(rf"^{re.escape(section)}:\n", text, flags=re.MULTILINE)
+    if not section_match:
+        suffix = "" if text.endswith("\n") else "\n"
+        return f"{text}{suffix}\n{section}:\n  {key}: {value}\n"
+
+    body_start = section_match.end()
+    next_section = re.search(r"^[A-Za-z0-9_]+:\s*(?:#.*)?$", text[body_start:], flags=re.MULTILINE)
+    body_end = body_start + next_section.start() if next_section else len(text)
+    body = text[body_start:body_end]
+
+    key_re = re.compile(
+        rf"^(  {re.escape(key)}:\s*)[^#\n]*(\s+#.*)?$",
+        flags=re.MULTILINE,
+    )
+    if key_re.search(body):
+        body = key_re.sub(lambda m: f"{m.group(1)}{value}{m.group(2) or ''}", body, count=1)
+    else:
+        insert = f"  {key}: {value}\n"
+        body = body + ("" if body.endswith("\n") else "\n") + insert
+
+    return text[:body_start] + body + text[body_end:]
+
+
+def _insert_beam_after_physics_if_missing(text: str, energy_mev: float) -> str:
+    if re.search(r"^beam:\s*$", text, flags=re.MULTILINE):
+        return _set_section_value(text, "beam", "primary_energy_MeV", f"{energy_mev:.6g}")
+
+    physics_match = re.search(r"^physics:\n", text, flags=re.MULTILINE)
+    if not physics_match:
+        return _set_section_value(text, "beam", "primary_energy_MeV", f"{energy_mev:.6g}")
+
+    body_start = physics_match.end()
+    next_section = re.search(r"^[A-Za-z0-9_]+:\s*(?:#.*)?$", text[body_start:], flags=re.MULTILINE)
+    insert_at = body_start + next_section.start() if next_section else len(text)
+    separator = "" if text[:insert_at].endswith("\n\n") else "\n"
+    return text[:insert_at] + f"{separator}beam:\n  primary_energy_MeV: {energy_mev:.6g}\n\n" + text[insert_at:]
+
+
+def update_config(path: Path, energy_mev: float, tof_min: float, tof_max: float) -> None:
+    text = path.read_text(encoding="utf-8")
+    text = _insert_beam_after_physics_if_missing(text, energy_mev)
+    text = _set_section_value(text, "selection", "tof_window_ns", f"[{tof_min:.3f}, {tof_max:.3f}]")
+    path.write_text(text, encoding="utf-8")
+    print(f"updated_config: {path}")
+    print(f"updated beam.primary_energy_MeV: {energy_mev:.6g}")
+    print(f"updated selection.tof_window_ns: [{tof_min:.3f}, {tof_max:.3f}]")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("energy_mev", type=float, help="Initial neutron kinetic energy in MeV.")
+    parser.add_argument("distance_cm", type=float, help="Distance from LAr cell to neutron detector in cm.")
+    parser.add_argument("--A", type=float, default=40.0, help="Argon mass number. Default: 40.")
+    parser.add_argument(
+        "--pad-ns",
+        type=float,
+        default=0.0,
+        help="Optional symmetric padding to apply to the TOF cut in ns.",
+    )
+    parser.add_argument(
+        "--update-config",
+        type=Path,
+        help="Update this YAML config with beam.primary_energy_MeV and selection.tof_window_ns.",
+    )
+    args = parser.parse_args()
+
+    max_recoil_mev = recoil_energy_mev(args.energy_mev, args.A, math.pi)
+    post_scatter_energy_mev = args.energy_mev - max_recoil_mev
+    if post_scatter_energy_mev <= 0.0:
+        raise SystemExit("Maximum recoil energy is not below the initial neutron energy.")
+
+    tof_min = tof_ns(args.distance_cm, args.energy_mev)
+    tof_max = tof_ns(args.distance_cm, post_scatter_energy_mev)
+    padded_min = tof_min - args.pad_ns
+    padded_max = tof_max + args.pad_ns
+
+    print(f"initial_energy_MeV: {args.energy_mev:.6g}")
+    print(f"distance_cm: {args.distance_cm:.6g}")
+    print(f"argon_A: {args.A:.6g}")
+    print(f"max_recoil_energy_MeV: {max_recoil_mev:.6g}")
+    print(f"post_scatter_neutron_energy_MeV: {post_scatter_energy_mev:.6g}")
+    print(f"tof_min_ns: {tof_min:.3f}")
+    print(f"tof_max_ns: {tof_max:.3f}")
+    print(f"tof_cut_ns: [{tof_min:.3f}, {tof_max:.3f}]")
+    if args.pad_ns:
+        print(f"padded_tof_cut_ns: [{padded_min:.3f}, {padded_max:.3f}]")
+    if args.update_config:
+        write_min = padded_min if args.pad_ns else tof_min
+        write_max = padded_max if args.pad_ns else tof_max
+        update_config(args.update_config, args.energy_mev, write_min, write_max)
+
+
+if __name__ == "__main__":
+    main()

@@ -15,8 +15,11 @@
 /det/setInnerHeightCm {{inner_lar_height_cm}}
 /det/setOuterDiameterCm {{outer_lar_diameter_cm}}
 /det/setOuterHeightCm {{outer_lar_height_cm}}
+/det/setNeutronDetectors {{neutron_detector_config}}
 /det/setPMTSideCm {{pmt_side_length_cm}}
 /det/setSiPMTileCm {{sipm_tile_size_cm}}
+/det/setTOFWindowNs {{tof_window_ns}}
+/det/setPrimaryEnergyMeV {{primary_energy_MeV}}
 
 /det/setAbsLengthCm {{lar_absorption_length_cm}}
 /det/setBirksMmPerMeV {{lar_birks_constant_mm_per_MeV}}
