@@ -16,7 +16,7 @@ def build_scan_rows():
     configs.extend((4, bottom, 0) for bottom in range(1, 5))
 
     # Four top + four bottom PMTs, then 1-10 SiPM rows
-    configs.extend((4, 4, rows) for rows in range(1, 11))
+    configs.extend((4, 4, rows) for rows in range(1, 4))
 
     rows = []
     for i, (top, bottom, sipm_rows) in enumerate(configs):

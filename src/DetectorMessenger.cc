@@ -4,6 +4,7 @@
 #include "G4UIcmdWithADoubleAndUnit.hh"
 #include "G4UIcmdWithADouble.hh"
 #include "G4UIcmdWithAString.hh"
+#include "G4UIcmdWithABool.hh"
 
 #include <sstream>
 
@@ -38,6 +39,12 @@ DetectorMessenger::DetectorMessenger(DetectorConstruction* det, Run* run)
   fOuterHeightCmd->SetParameterName("OuterHeightCm", false);
   fOuterHeightCmd->SetRange("OuterHeightCm>0.");
   fOuterHeightCmd->AvailableForStates(G4State_PreInit);
+
+  fOuterScintillationCmd = new G4UIcmdWithABool("/det/setOuterScintillation", this);
+  fOuterScintillationCmd->SetGuidance(
+      "Enable scintillation photon production in the outer LAr volume.");
+  fOuterScintillationCmd->SetParameterName("OuterScintillation", false);
+  fOuterScintillationCmd->AvailableForStates(G4State_PreInit);
 
   fNeutronDetectorsCmd = new G4UIcmdWithAString("/det/setNeutronDetectors", this);
   fNeutronDetectorsCmd->SetGuidance("Set neutron liquid scintillators as label:angle_deg:distance_cm;...");
@@ -236,6 +243,7 @@ DetectorMessenger::~DetectorMessenger() {
   delete fInnerHeightCmd;
   delete fOuterDiameterCmd;
   delete fOuterHeightCmd;
+  delete fOuterScintillationCmd;
   delete fNeutronDetectorsCmd;
   delete fTOFWindowCmd;
   delete fPrimaryEnergyCmd;
@@ -276,6 +284,9 @@ void DetectorMessenger::SetNewValue(G4UIcommand* command, G4String newValue) {
         fDetector->SetOuterDiameterCm(fOuterDiameterCmd->GetNewDoubleValue(newValue));
     } else if (command == fOuterHeightCmd) {
         fDetector->SetOuterHeightCm(fOuterHeightCmd->GetNewDoubleValue(newValue));
+    } else if (command == fOuterScintillationCmd) {
+        fDetector->SetOuterScintillation(
+            fOuterScintillationCmd->GetNewBoolValue(newValue));
     } else if (command == fNeutronDetectorsCmd) {
         fDetector->SetNeutronDetectors(newValue);
     } else if (command == fTOFWindowCmd) {

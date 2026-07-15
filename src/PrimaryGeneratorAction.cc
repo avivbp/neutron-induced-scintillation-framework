@@ -63,6 +63,25 @@ PrimaryGeneratorAction::~PrimaryGeneratorAction()
   delete fParticleGun;
   delete fGunMessenger;  
 }
+
+void PrimaryGeneratorAction::SetParticle(const G4String& name)
+{
+  G4ParticleDefinition* particle =
+      G4ParticleTable::GetParticleTable()->FindParticle(name);
+  if (!particle) {
+    G4ExceptionDescription description;
+    description << "Unknown primary particle name: " << name;
+    G4Exception("PrimaryGeneratorAction::SetParticle", "PrimaryGun_001",
+                FatalException, description);
+    return;
+  }
+  fParticleGun->SetParticleDefinition(particle);
+}
+
+void PrimaryGeneratorAction::SetParticlePosition(const G4ThreeVector& position)
+{
+  fParticleGun->SetParticlePosition(position);
+}
   
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -135,14 +154,13 @@ void PrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)
 
 
   if(0 == anEvent->GetEventID()) {
-    //G4double x0 = -0.5*(fDetector->GetWorldSizeX());
-    G4double x0 = -3.*m;
-    //x0 = 0.*m;
-    //G4double y0 = -2.*m;
-    //x0 = -10.*m;
-    fParticleGun->SetParticlePosition(G4ThreeVector(x0, 0.0, 0.0));  
-    //fParticleGun->SetParticleMomentumDirection(G4ThreeVector(1,0,0));
     fParticleGun->SetParticleMomentumDirection(G4ThreeVector(1,0,0));
+    G4cout << "Primary gun particle: "
+           << fParticleGun->GetParticleDefinition()->GetParticleName()
+           << G4endl;
+    G4cout << "Primary gun position: "
+           << fParticleGun->GetParticlePosition()/CLHEP::cm
+           << " cm" << G4endl;
     G4cout << "Primary gun energy: "
            << fParticleGun->GetParticleEnergy()/CLHEP::MeV
            << " MeV" << G4endl;

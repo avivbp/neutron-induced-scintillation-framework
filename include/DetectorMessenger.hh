@@ -7,6 +7,7 @@
 #include "G4UIcmdWithADouble.hh"
 #include "G4UIcmdWithAnInteger.hh"
 #include "G4UIcmdWithAString.hh"
+#include "G4UIcmdWithABool.hh"
 #include "G4RunManager.hh"
 
 class DetectorConstruction;
@@ -47,6 +48,7 @@ private:
     G4UIcmdWithADouble* fInnerHeightCmd      = nullptr;
     G4UIcmdWithADouble* fOuterDiameterCmd    = nullptr;
     G4UIcmdWithADouble* fOuterHeightCmd      = nullptr;
+    G4UIcmdWithABool* fOuterScintillationCmd = nullptr;
     G4UIcmdWithAString* fNeutronDetectorsCmd = nullptr;
     G4UIcmdWithADouble* fPMTSideCmd          = nullptr;
     G4UIcmdWithAString* fTOFWindowCmd        = nullptr;

@@ -42,11 +42,16 @@
 #include "G4Event.hh"
 // --- Per-thread CSV output (drop-in) ---
 #include <fstream>
+#include <atomic>
 #include <memory>
 #include "G4Threading.hh"
+#include "G4AutoLock.hh"
 #include "G4UImanager.hh"
 
 namespace {
+  G4Mutex gammaCsvMutex = G4MUTEX_INITIALIZER;
+  std::atomic<G4long> gammaPrimariesCompleted{0};
+
   // One set of files *per worker thread* (no mutex required).
   thread_local std::unique_ptr<std::ofstream> tls_hits;
   thread_local std::unique_ptr<std::ofstream> tls_stats;
@@ -183,6 +188,28 @@ void EventAction::EndOfEventAction(const G4Event* evt)
   const PrimaryGeneratorAction* prim = static_cast<const PrimaryGeneratorAction*>(G4RunManager::GetRunManager()->GetUserPrimaryGeneratorAction());
   const DetectorConstruction* det = static_cast<const DetectorConstruction*>(G4RunManager::GetRunManager()->GetUserDetectorConstruction());
   G4double energy = prim->GetParticleGun()->GetParticleEnergy()/CLHEP::MeV;
+  const G4String primaryName =
+      prim->GetParticleGun()->GetParticleDefinition()->GetParticleName();
+
+  // Gamma calibration is deliberately independent of the external neutron
+  // detector trigger or optical sensor configuration. The calibration macro
+  // enables scintillation in both inner and outer LAr; eDep and numPhotons are
+  // therefore total-LAr production quantities. Neutron runs remain unchanged.
+  if (primaryName == "gamma" && (eDep > 0.0 || numPhotons > 0)) {
+      G4AutoLock lock(&gammaCsvMutex);
+      run->csvfi.open("gamma_events.csv", std::ios_base::app);
+      run->csvfi << eventID << "," << energy << "," << eDep << ","
+                 << numPhotons << std::endl;
+      run->csvfi.close();
+  }
+
+  if (primaryName == "gamma") {
+      const G4long completed = ++gammaPrimariesCompleted;
+      if (completed == 1 || completed % 100 == 0) {
+          G4cout << "[gamma progress] primaries completed: "
+                 << completed << G4endl;
+      }
+  }
 
   G4int nPMTsTop = det->GetTopPMTs();
   G4int nPMTsBot = det->GetBotPMTs();

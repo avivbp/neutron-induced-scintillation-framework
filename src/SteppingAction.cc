@@ -228,6 +228,23 @@ if (verbose2){
   // ---- BEGIN: universal guards (paste near top of UserSteppingAction) ----
 const bool isOpt = (particleDef == opticalphoton);
 
+// Count each scintillation photon once, before WLS or transport losses. Gamma
+// calibration enables outer-LAr scintillation; neutron runs leave it disabled
+// and retain the historical inner-cell-only meaning of numPhotons.
+const G4bool countOuterLAr = fDetector->GetOuterScintillation();
+const G4bool isCountedLAr =
+    volumeName == "innerCell" || (countOuterLAr && volumeName == "outerCell");
+if (isOpt && stepNo == 1 && isCountedLAr &&
+    (!creator || creator->GetProcessName() != "OpWLS")) {
+  ++fEventAction->numPhotons;
+}
+
+// Gamma calibration totals inner+outer LAr deposition. Neutron runs retain
+// central-LAr eDep. Optical energy is excluded to avoid double counting.
+if (!isOpt && isCountedLAr) {
+  fEventAction->eDep += aStep->GetTotalEnergyDeposit() / CLHEP::MeV;
+}
+
 if (track->GetGlobalTime() > 10000.0 * CLHEP::ns) {
 
     track->SetTrackStatus(fStopAndKill);

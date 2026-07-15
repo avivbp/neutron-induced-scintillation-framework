@@ -229,6 +229,8 @@ public:
   void SetInnerHeightCm(G4double v) { fInnerHeight = v * CLHEP::cm; }
   void SetOuterDiameterCm(G4double v) { fOuterDiameter = v * CLHEP::cm; }
   void SetOuterHeightCm(G4double v) { fOuterHeight = v * CLHEP::cm; }
+  void SetOuterScintillation(G4bool enabled) { fOuterScintillation = enabled; }
+  G4bool GetOuterScintillation() const { return fOuterScintillation; }
 
   void SetNeutronDetectors(const G4String& value) {
       std::vector<NeutronDetectorConfig> detectors;
@@ -491,6 +493,7 @@ private:
   G4Material*        Al;
   G4Material*        noScintMaterial;
   G4Material*        fAbsorberMaterial;
+  G4bool             fOuterScintillation = false;
   G4double           fAbsorberThickness;
   G4double           fAbsorberSizeYZ;
 

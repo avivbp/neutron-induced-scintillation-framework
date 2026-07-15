@@ -1,0 +1,37 @@
+# Auto-generated gamma calibration macro.
+# It uses the same geometry and optical parameters as the neutron run config.
+
+/control/verbose 1
+/run/verbose 1
+/event/verbose 0
+/tracking/verbose 0
+
+/det/setInnerRadiusCm {{inner_lar_radius_cm}}
+/det/setInnerHeightCm {{inner_lar_height_cm}}
+/det/setOuterDiameterCm {{outer_lar_diameter_cm}}
+/det/setOuterHeightCm {{outer_lar_height_cm}}
+/det/setOuterScintillation true
+/det/setNeutronDetectors {{neutron_detector_config}}
+/det/setPMTSideCm {{pmt_side_length_cm}}
+/det/setSiPMTileCm {{sipm_tile_size_cm}}
+/det/setTOFWindowNs {{tof_window_ns}}
+/det/setPrimaryEnergyMeV {{gamma_energy_MeV}}
+
+/det/setAbsLengthCm {{lar_absorption_length_cm}}
+/det/setBirksMmPerMeV {{lar_birks_constant_mm_per_MeV}}
+/det/setScintYieldPerMeV {{lar_scintillation_yield_per_MeV}}
+/det/setScintYieldScale {{lar_scintillation_yield_scale}}
+/det/setFastTimeNs {{lar_fast_time_ns}}
+/det/setSlowTimeNs {{lar_slow_time_ns}}
+/det/setFastFraction {{lar_fast_fraction}}
+/det/setTPBEfficiency {{tpb_efficiency}}
+/det/setReflectorReflectivity {{reflector_reflectivity}}
+
+/run/initialize
+/process/inactivate Cerenkov
+
+/testem/gun/particle gamma
+/testem/gun/energy {{gamma_energy_MeV}} MeV
+/testem/gun/position {{gamma_source_x_cm}} {{gamma_source_y_cm}} {{gamma_source_z_cm}} cm
+
+/run/beamOn {{n_events}}

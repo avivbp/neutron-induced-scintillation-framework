@@ -824,7 +824,9 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   outerCellSolid = new G4Tubs("outerCell",0., outerDiameter/2, outerHeight/2, 0., 360. * deg);
 
   outerCellLogic = new G4LogicalVolume(outerCellSolid,    //its solid
-                                       noScintMaterial, //its material
+                                       fOuterScintillation
+                                           ? fAbsorberMaterial
+                                           : noScintMaterial,
                                        "outerCell");       //its name
 
   outerCellPhysi = new G4PVPlacement(transform1,

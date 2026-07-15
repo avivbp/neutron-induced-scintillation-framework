@@ -37,6 +37,8 @@
 #include "G4UIcmdWithoutParameter.hh"
 #include "G4UIcmdWithADouble.hh"
 #include "G4UIcmdWithADoubleAndUnit.hh"
+#include "G4UIcmdWithAString.hh"
+#include "G4UIcmdWith3VectorAndUnit.hh"
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -46,6 +48,8 @@ PrimaryGeneratorMessenger::PrimaryGeneratorMessenger(
  fGunDir(0),      
  fDefaultCmd(0),
  fEnergyCmd(0),
+ fParticleCmd(0),
+ fPositionCmd(0),
  fRndmCmd(0)
 {
  fGunDir = new G4UIdirectory("/testem/gun/");
@@ -61,6 +65,17 @@ PrimaryGeneratorMessenger::PrimaryGeneratorMessenger(
  fEnergyCmd->SetRange("Energy > 0.0");
  fEnergyCmd->SetUnitCategory("Energy");
  fEnergyCmd->AvailableForStates(G4State_PreInit, G4State_Idle);
+
+ fParticleCmd = new G4UIcmdWithAString("/testem/gun/particle", this);
+ fParticleCmd->SetGuidance("Set the primary particle name, e.g. neutron or gamma.");
+ fParticleCmd->SetParameterName("ParticleName", false);
+ fParticleCmd->AvailableForStates(G4State_PreInit, G4State_Idle);
+
+ fPositionCmd = new G4UIcmdWith3VectorAndUnit("/testem/gun/position", this);
+ fPositionCmd->SetGuidance("Set the primary source position.");
+ fPositionCmd->SetParameterName("X", "Y", "Z", false);
+ fPositionCmd->SetUnitCategory("Length");
+ fPositionCmd->AvailableForStates(G4State_PreInit, G4State_Idle);
   
  fRndmCmd = new G4UIcmdWithADouble("/testem/gun/rndm",this);
  fRndmCmd->SetGuidance("random lateral extension on the beam");
@@ -76,6 +91,8 @@ PrimaryGeneratorMessenger::~PrimaryGeneratorMessenger()
 {
   delete fDefaultCmd;
   delete fEnergyCmd;
+  delete fParticleCmd;
+  delete fPositionCmd;
   delete fRndmCmd;
   delete fGunDir;    
 }
@@ -90,6 +107,12 @@ void PrimaryGeneratorMessenger::SetNewValue(G4UIcommand* command,
 
   if (command == fEnergyCmd)
     {fAction->SetParticleEnergy(fEnergyCmd->GetNewDoubleValue(newValue));}
+
+  if (command == fParticleCmd)
+    {fAction->SetParticle(newValue);}
+
+  if (command == fPositionCmd)
+    {fAction->SetParticlePosition(fPositionCmd->GetNew3VectorValue(newValue));}
    
   if (command == fRndmCmd)
    { fAction->SetRndmBeam(fRndmCmd->GetNewDoubleValue(newValue));}       

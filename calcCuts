@@ -53,12 +53,17 @@ def _set_section_value(text: str, section: str, key: str, value: str) -> str:
     body_end = body_start + next_section.start() if next_section else len(text)
     body = text[body_start:body_end]
 
+    # PyYAML commonly emits sequences in indentationless block style:
+    #   tof_window_ns:
+    #   - 40.0
+    #   - 50.0
+    # Replace the entire scalar or block-sequence value with one inline value.
     key_re = re.compile(
-        rf"^(  {re.escape(key)}:\s*)[^#\n]*(\s+#.*)?$",
+        rf"^  {re.escape(key)}:[^\n]*(?:\n  -[^\n]*)*",
         flags=re.MULTILINE,
     )
     if key_re.search(body):
-        body = key_re.sub(lambda m: f"{m.group(1)}{value}{m.group(2) or ''}", body, count=1)
+        body = key_re.sub(f"  {key}: {value}", body, count=1)
     else:
         insert = f"  {key}: {value}\n"
         body = body + ("" if body.endswith("\n") else "\n") + insert
@@ -81,14 +86,24 @@ def _insert_beam_after_physics_if_missing(text: str, energy_mev: float) -> str:
     return text[:insert_at] + f"{separator}beam:\n  primary_energy_MeV: {energy_mev:.6g}\n\n" + text[insert_at:]
 
 
-def update_config(path: Path, energy_mev: float, tof_min: float, tof_max: float) -> None:
+def update_config(
+    path: Path,
+    energy_mev: float,
+    tof_min: float,
+    tof_max: float,
+    output_dir: str | None = None,
+) -> None:
     text = path.read_text(encoding="utf-8")
     text = _insert_beam_after_physics_if_missing(text, energy_mev)
     text = _set_section_value(text, "selection", "tof_window_ns", f"[{tof_min:.3f}, {tof_max:.3f}]")
+    if output_dir is not None:
+        text = _set_section_value(text, "run", "output_dir", output_dir)
     path.write_text(text, encoding="utf-8")
     print(f"updated_config: {path}")
     print(f"updated beam.primary_energy_MeV: {energy_mev:.6g}")
     print(f"updated selection.tof_window_ns: [{tof_min:.3f}, {tof_max:.3f}]")
+    if output_dir is not None:
+        print(f"updated run.output_dir: {output_dir}")
 
 
 def main() -> None:
@@ -106,6 +121,13 @@ def main() -> None:
         "--update-config",
         type=Path,
         help="Update this YAML config with beam.primary_energy_MeV and selection.tof_window_ns.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        help=(
+            "When updating a config, also set run.output_dir. Use a distinct "
+            "directory for each neutron energy to avoid overwriting results."
+        ),
     )
     args = parser.parse_args()
 
@@ -132,7 +154,13 @@ def main() -> None:
     if args.update_config:
         write_min = padded_min if args.pad_ns else tof_min
         write_max = padded_max if args.pad_ns else tof_max
-        update_config(args.update_config, args.energy_mev, write_min, write_max)
+        update_config(
+            args.update_config,
+            args.energy_mev,
+            write_min,
+            write_max,
+            args.output_dir,
+        )
 
 
 if __name__ == "__main__":

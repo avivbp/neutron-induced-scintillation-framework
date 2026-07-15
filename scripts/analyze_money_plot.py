@@ -35,6 +35,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from neutron_scintillation_correction import apply_correction
+
 
 PE_COLUMN_CANDIDATES = ("numPE", "nPE", "pe", "PE")
 
@@ -265,6 +267,15 @@ def load_summaries(
 
     # A reproducible but different random stream for each file/subset.
     master_rng = np.random.default_rng(seed)
+    correction_config = nested(
+        config,
+        ("analysis", "neutron_scintillation_correction"),
+        {},
+    )
+    correction_enabled = bool(
+        isinstance(correction_config, dict)
+        and correction_config.get("enabled", False)
+    )
 
     for path in files:
         parsed = parse_optical_configuration(path)
@@ -292,6 +303,36 @@ def load_summaries(
             )
             continue
 
+        if correction_enabled:
+            try:
+                frame, correction_info = apply_correction(
+                    frame,
+                    correction_config,
+                    pe_column,
+                )
+            except ValueError as exc:
+                raise SystemExit(
+                    f"Neutron scintillation correction failed for {path.name}: {exc}"
+                ) from exc
+            pe_column = "numPE_corrected"
+            n_valid = int(frame[pe_column].notna().sum())
+            leff_description = (
+                "constant"
+                if correction_info.extrapolation == "constant"
+                else (
+                    f"{correction_info.leff_min_keV:g}-"
+                    f"{correction_info.leff_max_keV:g} keV "
+                    f"({correction_info.extrapolation})"
+                )
+            )
+            print(
+                "[analysis] neutron correction: "
+                f"{path.name}: {n_valid}/{len(frame)} valid events; "
+                f"gamma a={correction_info.slope_photons_per_MeV:g} photons/MeV, "
+                f"b={correction_info.intercept_photons:g} photons; "
+                f"Leff={leff_description}"
+            )
+
         pe_values = pd.to_numeric(
             frame[pe_column],
             errors="coerce",
@@ -317,6 +358,7 @@ def load_summaries(
                         bootstrap_samples,
                         rng,
                     ),
+                    **correction_diagnostics(frame),
                 }
             )
 
@@ -359,6 +401,7 @@ def load_summaries(
                         bootstrap_samples,
                         rng,
                     ),
+                    **correction_diagnostics(frame.loc[mask]),
                 }
             )
 
@@ -389,6 +432,88 @@ def load_summaries(
         ).reset_index(drop=True)
 
     return combined, by_detector
+
+
+def correction_diagnostics(frame: pd.DataFrame) -> dict[str, float | int | str]:
+    """Add auditable raw/corrected quantities without changing event cuts."""
+    if "numPE_corrected" not in frame.columns:
+        return {"pe_quantity": "raw numPE"}
+
+    valid_frame = frame.loc[frame["numPE_corrected"].notna()]
+
+    def finite_mean(column: str) -> float:
+        values = pd.to_numeric(
+            valid_frame[column], errors="coerce"
+        ).to_numpy(dtype=float)
+        values = values[np.isfinite(values)]
+        return float(np.mean(values)) if values.size else np.nan
+
+    return {
+        "pe_quantity": "thesis-corrected numPE",
+        "n_correction_valid": len(valid_frame),
+        "mean_pe_raw": finite_mean("numPE_raw"),
+        "mean_pe_corrected": finite_mean("numPE_corrected"),
+        "mean_edep_MeV": finite_mean("eDep"),
+        "mean_num_photons_raw": finite_mean("numPhotons"),
+        "mean_num_photons_expected_NR": finite_mean("numPhotons_expected_NR"),
+        "mean_correction_factor": finite_mean(
+            "neutron_scintillation_correction_factor"
+        ),
+    }
+
+
+def detector_angles(config: dict) -> dict[str, float]:
+    return {
+        str(detector["label"]).strip(): float(detector["angle_deg"])
+        for detector in configured_neutron_detectors(config)
+        if detector.get("angle_deg") is not None
+    }
+
+
+def plot_raw_and_corrected_vs_angle(
+    frame: pd.DataFrame,
+    config: dict,
+    output_dir: Path,
+) -> None:
+    """Make one thesis-correction audit plot per optical configuration."""
+    if frame.empty or "mean_pe_corrected" not in frame.columns:
+        return
+
+    angle_by_detector = detector_angles(config)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    for source_file, subset in frame.groupby("source_file", sort=False):
+        subset = subset.copy()
+        subset["angle_deg"] = subset["detector"].map(angle_by_detector)
+        subset = subset.dropna(
+            subset=["angle_deg", "mean_pe_raw", "mean_pe_corrected"]
+        ).sort_values("angle_deg")
+        if subset.empty:
+            continue
+
+        figure, axis = plt.subplots(figsize=(8, 5.5))
+        axis.plot(
+            subset["angle_deg"],
+            subset["mean_pe_raw"],
+            "o-",
+            label="Raw detected PE",
+        )
+        axis.plot(
+            subset["angle_deg"],
+            subset["mean_pe_corrected"],
+            "s-",
+            label="Thesis-corrected PE",
+        )
+        axis.set_xlabel("Neutron detector angle [deg]")
+        axis.set_ylabel("Mean number of photoelectrons")
+        axis.set_title(Path(source_file).stem)
+        axis.grid(True, alpha=0.3)
+        axis.legend()
+        figure.tight_layout()
+        output_path = output_dir / f"{Path(source_file).stem}_pe_vs_angle.png"
+        figure.savefig(output_path, dpi=300)
+        plt.close(figure)
+        print(f"[analysis] wrote {output_path}")
 
 
 def y_errors(frame: pd.DataFrame, uncertainty: str) -> np.ndarray:
@@ -444,6 +569,7 @@ def plot_summary(
     uncertainty: str,
     confidence: float,
     title: str | None = None,
+    corrected: bool = False,
 ) -> None:
     if frame.empty:
         return
@@ -495,7 +621,11 @@ def plot_summary(
         axis.set_title(title)
 
     axis.set_xlabel("Optical coverage [%]")
-    axis.set_ylabel("Mean number of photoelectrons")
+    axis.set_ylabel(
+        "Mean corrected number of photoelectrons"
+        if corrected
+        else "Mean number of photoelectrons"
+    )
     axis.grid(True, alpha=0.3)
 
     # Keep all threshold bands visible without clipping higher-valued data.
@@ -534,13 +664,19 @@ def main() -> None:
     )
     parser.add_argument(
         "--input-dir",
-        default=".",
-        help="Directory containing the numPE CSV files.",
+        default=None,
+        help=(
+            "Directory containing numPE CSV files. By default, use "
+            "run.output_dir from the selected config."
+        ),
     )
     parser.add_argument(
         "--output-dir",
-        default="output/tau_lab_example",
-        help="Directory for summary CSVs and PNG figures.",
+        default=None,
+        help=(
+            "Directory for summary CSVs and figures. By default, use "
+            "run.output_dir from the selected config."
+        ),
     )
     parser.add_argument(
         "--metadata",
@@ -583,10 +719,23 @@ def main() -> None:
         parser.error("--bootstrap-samples must be at least 2")
 
     config_path = Path(args.config)
-    input_dir = Path(args.input_dir)
-    output_dir = Path(args.output_dir)
-
     config = load_yaml(config_path)
+    configured_output_dir = nested(
+        config, ("run", "output_dir"), "output/tau_lab_example"
+    )
+    input_dir = Path(args.input_dir or configured_output_dir)
+    output_dir = Path(args.output_dir or configured_output_dir)
+    correction_enabled = bool(
+        nested(
+            config,
+            ("analysis", "neutron_scintillation_correction", "enabled"),
+            False,
+        )
+    )
+    print(
+        "[analysis] neutron scintillation correction: "
+        + ("enabled" if correction_enabled else "disabled")
+    )
 
     print(f"[analysis] uncertainty mode: {args.uncertainty}")
     if args.uncertainty == "bootstrap":
@@ -618,11 +767,19 @@ def main() -> None:
         index=False,
     )
 
+    if correction_enabled:
+        plot_raw_and_corrected_vs_angle(
+            by_detector,
+            config,
+            figures_dir / "correction_vs_detector_angle",
+        )
+
     plot_summary(
         combined,
         figures_dir / "coverage_vs_mean_pe.png",
         uncertainty=args.uncertainty,
         confidence=args.bootstrap_confidence,
+        corrected=correction_enabled,
     )
 
     if by_detector.empty or "detector" not in by_detector.columns:
@@ -645,6 +802,7 @@ def main() -> None:
             uncertainty=args.uncertainty,
             confidence=args.bootstrap_confidence,
             title=detector_plot_title(config, detector),
+            corrected=correction_enabled,
         )
 
 

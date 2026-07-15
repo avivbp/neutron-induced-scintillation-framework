@@ -2,7 +2,7 @@ run:
   executable: ./TestEm5
   build_dir: build-mt
   output_dir: output/tau_lab_example
-  n_events: 500000
+  n_events: 1000000
   n_threads: 11
   random_seed: 12345
   macro_template: macros/template_run.mac
@@ -12,7 +12,7 @@ physics:
   inactivate_cerenkov: true
 
 beam:
-  primary_energy_MeV: 14
+  primary_energy_MeV: 2.5
 
 geometry:
   inner_lar:
@@ -41,7 +41,7 @@ geometry:
       angle_deg: 120.0
       distance_cm: 100.0
     - label: A6
-      angle_deg: 180.0
+      angle_deg: 150.0
       distance_cm: 100.0
 
 optics:
@@ -88,7 +88,7 @@ sensors:
 selection:
   require_detected: true
   require_num_pe_positive: true
-  tof_window_ns: [16.538, 23.518]
+  tof_window_ns: [40.0, 50.0]
   reject_inelastic_sensitive: true
   reject_external_scatter: false
 
@@ -98,3 +98,38 @@ analysis:
     - "event_summary*.csv"
   make_plots: true
   figure_format: png
+  gamma_trend_calibration:
+    # The optical/material parameters are inherited from this config file.
+    energies_keV: [122.0, 511.0, 662.0, 1274.0]
+    n_events_per_energy: 10000
+    # Event simulation is parallel; gamma CSV rows are protected by a mutex.
+    n_threads: 11
+    source_position_cm: [0.0, 0.0, 0.0]
+    # Keep only full-absorption events: total inner+outer LAr deposition must
+    # be at least this fraction of the primary gamma energy.
+    minimum_deposit_fraction: 0.99
+    output_dir: output/gamma_calibration
+  # Apply the event-level correction described in the thesis after the
+  # experimental event selection. Raw numPE remains the trigger/cut quantity.
+  neutron_scintillation_correction:
+    enabled: false
+    # Gamma light-yield relation consumed by neutron post-analysis:
+    #   N_ph,gamma = slope_photons_per_MeV * eDep_MeV + intercept_photons
+    # Running scripts/calibrate_gamma_trend.py writes the fitted values into
+    # output/gamma_calibration/config_with_gamma_trend.yaml automatically.
+    gamma_calibration:
+      # Format A: use already-fitted coefficients (the normal workflow).
+      slope_photons_per_MeV: 15390.0
+      intercept_photons: 0.0
+      # Format B: alternatively, delete slope_photons_per_MeV and
+      # intercept_photons above, then supply >=2 [energy, mean photons] points.
+      # The analysis will fit a straight line to these points itself.
+      # energy_unit: keV
+      # points: [[511.0, 7800.0], [1274.0, 19500.0]]
+    leff:
+      # Temporary energy-independent nuclear-recoil efficiency.
+      constant: 0.3
+      # For an energy-dependent Leff, remove "constant" and instead provide:
+      # energy_unit: keV
+      # extrapolation: error  # choices: error, nan, clip, linear
+      # points: [[7.1, 0.243], [13.7, 0.258], [117.8, 0.349]]

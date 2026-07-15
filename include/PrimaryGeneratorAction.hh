@@ -35,6 +35,7 @@
 
 #include "G4VUserPrimaryGeneratorAction.hh"
 #include "G4ParticleGun.hh"
+#include "G4ThreeVector.hh"
 #include "globals.hh"
 
 class G4Event;
@@ -53,6 +54,8 @@ class PrimaryGeneratorAction : public G4VUserPrimaryGeneratorAction
     void SetDefaultKinematic();
     void SetRndmBeam(G4double val) {fRndmBeam = val;};   
     void SetParticleEnergy(G4double val) {fParticleGun->SetParticleEnergy(val);};
+    void SetParticle(const G4String& name);
+    void SetParticlePosition(const G4ThreeVector& position);
     virtual void GeneratePrimaries(G4Event*);
     G4ParticleGun* GetParticleGun() const {return fParticleGun;};
     void SetOptPhotonPolar();
