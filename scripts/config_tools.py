@@ -135,6 +135,8 @@ def flatten_for_template(config: Mapping[str, Any], row: Mapping[str, Any]) -> D
         "lar_absorption_length_cm": float(deep_get(config, "optics.lar.absorption_length_cm", 150.0)),
         "lar_scintillation_yield_per_MeV": float(deep_get(config, "optics.lar.scintillation_yield_per_MeV", 51300.0)),
         "lar_scintillation_yield_scale": float(deep_get(config, "optics.lar.scintillation_yield_scale", 1.0)),
+        "lar_ion_scintillation_yield_scale": float(deep_get(config, "optics.lar.ion_scintillation_yield_scale", 0.3)),
+        "lar_outer_scintillation": str(bool(deep_get(config, "optics.lar.outer_scintillation", False))).lower(),
         "lar_birks_constant_mm_per_MeV": float(deep_get(config, "optics.lar.birks_constant_mm_per_MeV", 0.03)),
         "lar_fast_fraction": float(deep_get(config, "optics.lar.fast_fraction", 0.75)),
         "lar_fast_time_ns": float(deep_get(config, "optics.lar.fast_time_ns", 7.0)),

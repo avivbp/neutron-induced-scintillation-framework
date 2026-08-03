@@ -21,11 +21,14 @@ or
 
 The bootstrap option replaces the plotted SEM error bars; both SEM and
 bootstrap quantities are still written to the output summary CSV files.
+In addition, a separate plot is always written with the event-to-event sample
+standard deviation as the error bar around each mean.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import re
 from pathlib import Path
@@ -47,6 +50,16 @@ THRESHOLD_BANDS = (
     (20.0, 30.0, "purple", "Trigger-threshold region"),
     (40.0, 80.0, "green", "PSD-useful region"),
 )
+
+TRUE_SINGLE_REQUIRED_COLUMNS = (
+    "numElasticSensitive",
+    "scatteredNotSensitive",
+    "numInelastic",
+    "nCapture",
+    "InelasticSensitive",
+)
+ALL_EVENTS_COLOR = "#1f77b4"
+TRUE_SINGLE_COLOR = "#2ca02c"
 
 
 
@@ -154,6 +167,39 @@ def find_pe_column(frame: pd.DataFrame) -> str | None:
     return None
 
 
+def as_boolean(values: pd.Series) -> pd.Series:
+    """Interpret numeric and textual boolean spellings from simulation CSVs."""
+    numeric = pd.to_numeric(values, errors="coerce")
+    result = numeric.fillna(0).ne(0)
+    text = values.astype(str).str.strip().str.lower()
+    result.loc[text.isin(("true", "yes", "y"))] = True
+    return result
+
+
+def true_single_elastic_mask(frame: pd.DataFrame) -> pd.Series:
+    """Select one clean inner-cell elastic scatter and no other interaction."""
+    missing = [
+        column for column in TRUE_SINGLE_REQUIRED_COLUMNS
+        if column not in frame.columns
+    ]
+    if missing:
+        raise ValueError(
+            "true-single-elastic analysis requires CSV columns: "
+            + ", ".join(missing)
+        )
+
+    elastic = pd.to_numeric(
+        frame["numElasticSensitive"], errors="coerce"
+    ).eq(1)
+    external = as_boolean(frame["scatteredNotSensitive"])
+    clean = pd.Series(True, index=frame.index)
+    for column in ("numInelastic", "nCapture", "InelasticSensitive"):
+        clean &= pd.to_numeric(
+            frame[column], errors="coerce"
+        ).fillna(0).eq(0)
+    return elastic & ~external & clean
+
+
 def bootstrap_mean_interval(
     values: np.ndarray,
     confidence: float,
@@ -210,7 +256,7 @@ def summarize_values(
     rng: np.random.Generator,
 ) -> dict[str, float | int]:
     n_events = int(values.size)
-    mean_pe = float(np.mean(values))
+    mean_pe = float(np.mean(values)) if n_events else np.nan
     std_pe = float(np.std(values, ddof=1)) if n_events > 1 else 0.0
     sem_pe = std_pe / math.sqrt(n_events) if n_events > 1 else 0.0
 
@@ -234,6 +280,142 @@ def summarize_values(
     }
 
 
+def prefixed_summary(
+    prefix: str,
+    values: np.ndarray,
+    confidence: float,
+    bootstrap_samples: int,
+    rng: np.random.Generator,
+) -> dict[str, float | int]:
+    """Return a normal PE summary with every key namespaced by *prefix*."""
+    return {
+        f"{prefix}{key}": value
+        for key, value in summarize_values(
+            values, confidence, bootstrap_samples, rng
+        ).items()
+    }
+
+
+def histogram_bin_edges(
+    values: np.ndarray,
+    lower: float,
+    upper: float,
+    minimum_bins: int = 5,
+    maximum_bins: int = 120,
+) -> np.ndarray:
+    """Return shared bin edges within the displayed PE interval."""
+    finite = values[
+        np.isfinite(values) & (values >= lower) & (values <= upper)
+    ]
+    if finite.size == 0:
+        return np.linspace(lower, upper, minimum_bins + 1)
+    if lower == upper:
+        width = max(0.5, 0.05 * abs(lower))
+        return np.linspace(
+            lower - width,
+            upper + width,
+            minimum_bins + 1,
+        )
+
+    edges = np.histogram_bin_edges(finite, bins="fd")
+    number_of_bins = min(max(len(edges) - 1, minimum_bins), maximum_bins)
+    edges = np.linspace(lower, upper, number_of_bins + 1)
+    return edges
+
+
+def plot_event_pe_histogram(
+    frame: pd.DataFrame,
+    detector: str,
+    source_file: str,
+    output_root: Path,
+) -> None:
+    """Overlay raw and corrected event-level PE for one detector/configuration."""
+    raw = pd.to_numeric(frame["numPE_raw"], errors="coerce").to_numpy(dtype=float)
+    corrected = pd.to_numeric(
+        frame["numPE_corrected"], errors="coerce"
+    ).to_numpy(dtype=float)
+    raw = raw[np.isfinite(raw)]
+    corrected = corrected[np.isfinite(corrected)]
+    if raw.size == 0 and corrected.size == 0:
+        return
+
+    combined = np.concatenate((raw, corrected))
+    range_source = corrected if corrected.size else combined
+    display_upper = float(np.percentile(range_source, 95.0))
+    # PE is physically non-negative. The plotting code prepends one empty
+    # [-1, 0] bin so the histogram curve itself shows the boundary at zero.
+    display_lower = 0.0
+    if display_upper <= display_lower:
+        display_upper = display_lower + max(1.0, abs(display_lower) * 0.05)
+    corrected_edges = histogram_bin_edges(
+        corrected if corrected.size else combined,
+        lower=display_lower,
+        upper=display_upper,
+    )
+    corrected_edges = np.insert(corrected_edges, 0, -1.0)
+    visible_raw = raw[raw <= display_upper]
+    raw_upper = (
+        float(np.max(visible_raw)) if visible_raw.size else display_upper
+    )
+    if raw_upper <= display_lower:
+        raw_upper = display_upper
+    raw_edges = histogram_bin_edges(
+        raw,
+        lower=display_lower,
+        upper=raw_upper,
+    )
+    raw_edges = np.insert(raw_edges, 0, -1.0)
+    figure, axis = plt.subplots(figsize=(8, 5.5))
+    if raw.size:
+        axis.hist(
+            raw,
+            bins=raw_edges,
+            histtype="step",
+            linewidth=1.8,
+            color=ALL_EVENTS_COLOR,
+            label=f"Raw PE (N={raw.size})",
+        )
+    if corrected.size:
+        axis.hist(
+            corrected,
+            bins=corrected_edges,
+            histtype="stepfilled",
+            linewidth=1.4,
+            alpha=0.28,
+            color=TRUE_SINGLE_COLOR,
+            label=f"Corrected PE (N={corrected.size})",
+        )
+        axis.hist(
+            corrected,
+            bins=corrected_edges,
+            histtype="step",
+            linewidth=1.6,
+            color=TRUE_SINGLE_COLOR,
+        )
+    axis.set_xlabel("Number of photoelectrons per event")
+    axis.set_ylabel("Events per bin")
+    axis.set_title(f"{detector}: {Path(source_file).stem}")
+    axis.set_xlim(-1.0, display_upper)
+    axis.text(
+        0.99,
+        0.97,
+        "Displayed through corrected-PE 95th percentile; overflow omitted",
+        transform=axis.transAxes,
+        ha="right",
+        va="top",
+        fontsize=9,
+    )
+    axis.grid(True, alpha=0.25)
+    axis.legend()
+    figure.tight_layout()
+
+    detector_dir = output_root / detector
+    detector_dir.mkdir(parents=True, exist_ok=True)
+    output_path = detector_dir / f"{Path(source_file).stem}.png"
+    figure.savefig(output_path, dpi=300)
+    plt.close(figure)
+
+
 def find_input_files(input_dir: Path) -> list[Path]:
     """
     Read only files directly in input_dir.
@@ -241,11 +423,29 @@ def find_input_files(input_dir: Path) -> list[Path]:
     This deliberately avoids recursively finding duplicate numPE files in
     build directories or old output directories.
     """
-    return sorted(
+    discovered = sorted(
         input_dir.glob(
             "numPE_*_topPMTs_*_botPMTs_*_SiPMRows.csv"
         )
     )
+    metadata_path = input_dir / "scan_metadata.json"
+    if not metadata_path.exists():
+        return discovered
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        expected_names = {
+            f"numPE_{int(row['top_pmts'])}_topPMTs_"
+            f"{int(row['bottom_pmts'])}_botPMTs_"
+            f"{int(row['sipm_rows'])}_SiPMRows.csv"
+            for row in metadata
+        }
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        print(f"[analysis] warning: could not use {metadata_path}: {exc}")
+        return discovered
+    ignored = [path.name for path in discovered if path.name not in expected_names]
+    if ignored:
+        print(f"[analysis] ignoring stale CSV files: {', '.join(ignored)}")
+    return [path for path in discovered if path.name in expected_names]
 
 
 def load_summaries(
@@ -254,6 +454,7 @@ def load_summaries(
     confidence: float,
     bootstrap_samples: int,
     seed: int,
+    event_histogram_dir: Path | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     files = find_input_files(input_dir)
     if not files:
@@ -295,6 +496,11 @@ def load_summaries(
         # Fix headers such as "detector    ".
         frame.columns = frame.columns.astype(str).str.strip()
 
+        try:
+            true_single = true_single_elastic_mask(frame)
+        except ValueError as exc:
+            raise SystemExit(f"{path.name}: {exc}") from exc
+
         pe_column = find_pe_column(frame)
         if pe_column is None:
             print(
@@ -317,7 +523,9 @@ def load_summaries(
             pe_column = "numPE_corrected"
             n_valid = int(frame[pe_column].notna().sum())
             leff_description = (
-                "constant"
+                "already applied in simulation"
+                if correction_info.mode == "simulation_native"
+                else "constant"
                 if correction_info.extrapolation == "constant"
                 else (
                     f"{correction_info.leff_min_keV:g}-"
@@ -330,7 +538,7 @@ def load_summaries(
                 f"{path.name}: {n_valid}/{len(frame)} valid events; "
                 f"gamma a={correction_info.slope_photons_per_MeV:g} photons/MeV, "
                 f"b={correction_info.intercept_photons:g} photons; "
-                f"Leff={leff_description}"
+                f"mode={correction_info.mode}; Leff={leff_description}"
             )
 
         pe_values = pd.to_numeric(
@@ -345,6 +553,12 @@ def load_summaries(
             rng = np.random.default_rng(
                 master_rng.integers(0, np.iinfo(np.uint32).max)
             )
+            true_single_values = pe_values[
+                true_single & np.isfinite(pe_values)
+            ].to_numpy(dtype=float)
+            true_single_rng = np.random.default_rng(
+                master_rng.integers(0, np.iinfo(np.uint32).max)
+            )
             combined_rows.append(
                 {
                     "source_file": path.name,
@@ -357,6 +571,13 @@ def load_summaries(
                         confidence,
                         bootstrap_samples,
                         rng,
+                    ),
+                    **prefixed_summary(
+                        "true_single_",
+                        true_single_values,
+                        confidence,
+                        bootstrap_samples,
+                        true_single_rng,
                     ),
                     **correction_diagnostics(frame),
                 }
@@ -384,7 +605,24 @@ def load_summaries(
             if detector_values.size == 0:
                 continue
 
+            if correction_enabled and event_histogram_dir is not None:
+                plot_event_pe_histogram(
+                    frame.loc[mask],
+                    detector,
+                    path.name,
+                    event_histogram_dir,
+                )
+
             rng = np.random.default_rng(
+                master_rng.integers(0, np.iinfo(np.uint32).max)
+            )
+            detector_true_single_values = pd.to_numeric(
+                frame.loc[mask & true_single, pe_column], errors="coerce"
+            )
+            detector_true_single_values = detector_true_single_values[
+                np.isfinite(detector_true_single_values)
+            ].to_numpy(dtype=float)
+            true_single_rng = np.random.default_rng(
                 master_rng.integers(0, np.iinfo(np.uint32).max)
             )
             detector_rows.append(
@@ -400,6 +638,13 @@ def load_summaries(
                         confidence,
                         bootstrap_samples,
                         rng,
+                    ),
+                    **prefixed_summary(
+                        "true_single_",
+                        detector_true_single_values,
+                        confidence,
+                        bootstrap_samples,
+                        true_single_rng,
                     ),
                     **correction_diagnostics(frame.loc[mask]),
                 }
@@ -454,8 +699,11 @@ def correction_diagnostics(frame: pd.DataFrame) -> dict[str, float | int | str]:
         "mean_pe_raw": finite_mean("numPE_raw"),
         "mean_pe_corrected": finite_mean("numPE_corrected"),
         "mean_edep_MeV": finite_mean("eDep"),
+        "mean_correction_energy_MeV": finite_mean("correction_energy_MeV"),
         "mean_num_photons_raw": finite_mean("numPhotons"),
-        "mean_num_photons_expected_NR": finite_mean("numPhotons_expected_NR"),
+        "mean_num_photons_expected_correction_target": finite_mean(
+            "numPhotons_expected_correction_target"
+        ),
         "mean_correction_factor": finite_mean(
             "neutron_scintillation_correction_factor"
         ),
@@ -516,12 +764,18 @@ def plot_raw_and_corrected_vs_angle(
         print(f"[analysis] wrote {output_path}")
 
 
-def y_errors(frame: pd.DataFrame, uncertainty: str) -> np.ndarray:
+def y_errors(
+    frame: pd.DataFrame,
+    uncertainty: str,
+    prefix: str = "",
+) -> np.ndarray:
     if uncertainty == "sem":
-        return frame["sem_pe"].to_numpy(dtype=float)
+        return frame[f"{prefix}sem_pe"].to_numpy(dtype=float)
+    if uncertainty == "std":
+        return frame[f"{prefix}std_pe"].to_numpy(dtype=float)
 
-    lower = frame["bootstrap_err_low_pe"].to_numpy(dtype=float)
-    upper = frame["bootstrap_err_high_pe"].to_numpy(dtype=float)
+    lower = frame[f"{prefix}bootstrap_err_low_pe"].to_numpy(dtype=float)
+    upper = frame[f"{prefix}bootstrap_err_high_pe"].to_numpy(dtype=float)
     return np.vstack([lower, upper])
 
 
@@ -577,8 +831,6 @@ def plot_summary(
     frame = frame.sort_values("coverage_percent")
 
     coverage = frame["coverage_percent"].to_numpy(dtype=float)
-    mean_pe = frame["mean_pe"].to_numpy(dtype=float)
-    errors = y_errors(frame, uncertainty)
     sipm_rows = frame["sipm_rows"].to_numpy(dtype=int)
 
     pmt_only = sipm_rows == 0
@@ -587,35 +839,35 @@ def plot_summary(
     figure, axis = plt.subplots(figsize=(9, 6))
     highest_band_edge = add_threshold_bands(axis)
 
-    if np.any(pmt_only):
-        pmt_errors = (
-            errors[pmt_only]
-            if errors.ndim == 1
-            else errors[:, pmt_only]
-        )
-        axis.errorbar(
-            coverage[pmt_only],
-            mean_pe[pmt_only],
-            yerr=pmt_errors,
-            fmt="o",
-            capsize=3,
-            label="PMTs only",
-        )
-
-    if np.any(with_sipm):
-        sipm_errors = (
-            errors[with_sipm]
-            if errors.ndim == 1
-            else errors[:, with_sipm]
-        )
-        axis.errorbar(
-            coverage[with_sipm],
-            mean_pe[with_sipm],
-            yerr=sipm_errors,
-            fmt="s",
-            capsize=3,
-            label="PMTs + SiPM rows",
-        )
+    populations = (
+        ("", "All selected events", ALL_EVENTS_COLOR),
+        ("true_single_", "True single elastic", TRUE_SINGLE_COLOR),
+    )
+    sensor_groups = (
+        (pmt_only, "o", "PMTs only"),
+        (with_sipm, "s", "PMTs + SiPM rows"),
+    )
+    for prefix, population_label, color in populations:
+        mean_pe = frame[f"{prefix}mean_pe"].to_numpy(dtype=float)
+        errors = y_errors(frame, uncertainty, prefix=prefix)
+        for mask, marker, sensor_label in sensor_groups:
+            valid = mask & np.isfinite(mean_pe)
+            if not np.any(valid):
+                continue
+            selected_errors = (
+                errors[valid]
+                if errors.ndim == 1
+                else errors[:, valid]
+            )
+            axis.errorbar(
+                coverage[valid],
+                mean_pe[valid],
+                yerr=selected_errors,
+                fmt=marker,
+                color=color,
+                capsize=3,
+                label=f"{population_label} — {sensor_label}",
+            )
 
     if title:
         axis.set_title(title)
@@ -633,7 +885,9 @@ def plot_summary(
     axis.set_ylim(0.0, max(current_upper, highest_band_edge))
 
     uncertainty_label = (
-        "SEM"
+        "event-to-event sample standard deviation"
+        if uncertainty == "std"
+        else "SEM"
         if uncertainty == "sem"
         else f"{100.0 * confidence:g}% bootstrap CI"
     )
@@ -746,17 +1000,25 @@ def main() -> None:
             f"seed={args.bootstrap_seed}"
         )
 
+    output_dir.mkdir(parents=True, exist_ok=True)
+    figures_dir = output_dir / "figures"
+    detector_figures_dir = figures_dir / "by_neutron_detector"
+    event_histogram_dir = figures_dir / "event_pe_histograms"
+
+    if not correction_enabled:
+        print(
+            "[analysis] event PE histograms require correction to be enabled; "
+            "raw/corrected overlays will not be created"
+        )
+
     combined, by_detector = load_summaries(
         input_dir=input_dir,
         config=config,
         confidence=args.bootstrap_confidence,
         bootstrap_samples=args.bootstrap_samples,
         seed=args.bootstrap_seed,
+        event_histogram_dir=event_histogram_dir,
     )
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    figures_dir = output_dir / "figures"
-    detector_figures_dir = figures_dir / "by_neutron_detector"
 
     combined.to_csv(
         output_dir / "run_summary.csv",
@@ -781,6 +1043,13 @@ def main() -> None:
         confidence=args.bootstrap_confidence,
         corrected=correction_enabled,
     )
+    plot_summary(
+        combined,
+        figures_dir / "coverage_vs_mean_pe_std.png",
+        uncertainty="std",
+        confidence=args.bootstrap_confidence,
+        corrected=correction_enabled,
+    )
 
     if by_detector.empty or "detector" not in by_detector.columns:
         print(
@@ -800,6 +1069,15 @@ def main() -> None:
             detector_figures_dir
             / f"coverage_vs_mean_pe_detector_{detector}.png",
             uncertainty=args.uncertainty,
+            confidence=args.bootstrap_confidence,
+            title=detector_plot_title(config, detector),
+            corrected=correction_enabled,
+        )
+        plot_summary(
+            subset,
+            detector_figures_dir
+            / f"coverage_vs_mean_pe_detector_{detector}_std.png",
+            uncertainty="std",
             confidence=args.bootstrap_confidence,
             title=detector_plot_title(config, detector),
             corrected=correction_enabled,

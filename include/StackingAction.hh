@@ -36,24 +36,29 @@
 #include "G4UserStackingAction.hh"
 #include "globals.hh"
 #include "G4OpticalPhoton.hh"
+#include <unordered_map>
 
 class EventAction;
 class StackingMessenger;
+class DetectorConstruction;
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 class StackingAction : public G4UserStackingAction
 {
   public:
-    StackingAction(EventAction*);
+    StackingAction(DetectorConstruction*, EventAction*);
    ~StackingAction();
    
     void SetKillStatus(G4int value) { fKillSecondary = value;};
      
     G4ClassificationOfNewTrack ClassifyNewTrack(const G4Track*) override;
+    void PrepareNewEvent() override;
 
   private:
+    DetectorConstruction* fDetector;
     EventAction*        fEventAction;    
+    std::unordered_map<G4int, G4bool> fNuclearTrack;
     
     G4bool              fKillSecondary = 0;
     StackingMessenger*  fStackMessenger;
@@ -62,4 +67,3 @@ class StackingAction : public G4UserStackingAction
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 #endif
-

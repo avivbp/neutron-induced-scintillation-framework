@@ -36,15 +36,18 @@
 #include "EventAction.hh"
 #include "HistoManager.hh"
 #include "StackingMessenger.hh"
+#include "DetectorConstruction.hh"
 
 #include "G4RunManager.hh"
 #include "G4Track.hh"
 #include "G4EmSecondaryParticleType.hh"
+#include "G4Neutron.hh"
+#include "Randomize.hh"
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-StackingAction::StackingAction(EventAction* EA)
- : G4UserStackingAction(), fEventAction(EA)
+StackingAction::StackingAction(DetectorConstruction* detector, EventAction* EA)
+ : G4UserStackingAction(), fDetector(detector), fEventAction(EA)
 {
   fStackMessenger = new StackingMessenger(this);
 }
@@ -61,6 +64,29 @@ StackingAction::~StackingAction()
 G4ClassificationOfNewTrack
 StackingAction::ClassifyNewTrack(const G4Track* aTrack)
 {
+  const auto* definition = aTrack->GetDefinition();
+  const G4bool isNuclear =
+      definition->GetParticleType() == "nucleus" ||
+      definition == G4Neutron::NeutronDefinition();
+  fNuclearTrack[aTrack->GetTrackID()] = isNuclear;
+
+  // Geant4 11 makes its built-in particle-dependent scintillation and Birks
+  // saturation mutually exclusive. Preserve the fitted Birks response, then
+  // Bernoulli-thin only LAr scintillation photons whose parent was an ion.
+  // For a Poisson photon population this produces the correct Poisson mean and
+  // variance at Leff*mean before any optical transport or detector response.
+  if (definition == G4OpticalPhoton::OpticalPhotonDefinition() &&
+      aTrack->GetCreatorProcess() &&
+      aTrack->GetCreatorProcess()->GetProcessName() == "Scintillation") {
+    const auto parent = fNuclearTrack.find(aTrack->GetParentID());
+    const G4bool isLAr =
+        fDetector->IsInsideScintillatingLAr(aTrack->GetPosition());
+    if (isLAr && parent != fNuclearTrack.end() && parent->second &&
+        G4UniformRand() > fDetector->GetIonScintYieldScale()) {
+      return fKill;
+    }
+  }
+
   // G4AnalysisManager* analysisManager = G4AnalysisManager::Instance();
 
   //keep primary particle
@@ -141,6 +167,11 @@ StackingAction::ClassifyNewTrack(const G4Track* aTrack)
   }
     
   return status;
+}
+
+void StackingAction::PrepareNewEvent()
+{
+  fNuclearTrack.clear();
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......

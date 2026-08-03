@@ -192,9 +192,9 @@ void EventAction::EndOfEventAction(const G4Event* evt)
       prim->GetParticleGun()->GetParticleDefinition()->GetParticleName();
 
   // Gamma calibration is deliberately independent of the external neutron
-  // detector trigger or optical sensor configuration. The calibration macro
-  // enables scintillation in both inner and outer LAr; eDep and numPhotons are
-  // therefore total-LAr production quantities. Neutron runs remain unchanged.
+  // detector trigger or optical sensor configuration. Its macro enables
+  // scintillation in both identical LAr volumes, so eDep and numPhotons are
+  // total-LAr production quantities. Neutron runs remain inner-cell-only.
   if (primaryName == "gamma" && (eDep > 0.0 || numPhotons > 0)) {
       G4AutoLock lock(&gammaCsvMutex);
       run->csvfi.open("gamma_events.csv", std::ios_base::app);

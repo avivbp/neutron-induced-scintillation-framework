@@ -98,6 +98,13 @@ DetectorMessenger::DetectorMessenger(DetectorConstruction* det, Run* run)
   fScintScaleCmd->SetRange("ScintYieldScale>=0.");
   fScintScaleCmd->AvailableForStates(G4State_PreInit);
 
+  fIonScintScaleCmd = new G4UIcmdWithADouble("/det/setIonScintYieldScale", this);
+  fIonScintScaleCmd->SetGuidance(
+      "Set the LAr ion/electron scintillation yield ratio after Birks quenching.");
+  fIonScintScaleCmd->SetParameterName("IonScintYieldScale", false);
+  fIonScintScaleCmd->SetRange("IonScintYieldScale>=0. && IonScintYieldScale<=1.");
+  fIonScintScaleCmd->AvailableForStates(G4State_PreInit);
+
   fFastTimeCmd = new G4UIcmdWithADouble("/det/setFastTimeNs", this);
   fFastTimeCmd->SetGuidance("Set fast scintillation time constant in ns.");
   fFastTimeCmd->SetParameterName("FastTimeNs", false);
@@ -253,6 +260,7 @@ DetectorMessenger::~DetectorMessenger() {
   delete fBirksMmPerMeVCmd;
   delete fScintYieldCmd;
   delete fScintScaleCmd;
+  delete fIonScintScaleCmd;
   delete fFastTimeCmd;
   delete fSlowTimeCmd;
   delete fFastFractionCmd;
@@ -312,6 +320,9 @@ void DetectorMessenger::SetNewValue(G4UIcommand* command, G4String newValue) {
         fDetector->SetScintYieldPerMeV(fScintYieldCmd->GetNewDoubleValue(newValue));
     } else if (command == fScintScaleCmd) {
         fDetector->SetScintYieldScale(fScintScaleCmd->GetNewDoubleValue(newValue));
+    } else if (command == fIonScintScaleCmd) {
+        fDetector->SetIonScintYieldScale(
+            fIonScintScaleCmd->GetNewDoubleValue(newValue));
     } else if (command == fFastTimeCmd) {
         fDetector->SetFastTimeNs(fFastTimeCmd->GetNewDoubleValue(newValue));
     } else if (command == fSlowTimeCmd) {

@@ -148,6 +148,9 @@ class DetectorConstruction : public G4VUserDetectorConstruction
   // ------------------ Optical/scintillation config ------------------
   G4double fLArScintYieldPerMeV = 51300.0;
   G4double fLArScintYieldScale = 1.0;
+  // Nuclear-recoil scintillation efficiency applied to LAr scintillation
+  // photons after Geant4's Birks calculation and before optical transport.
+  G4double fLArIonScintYieldScale = 0.3;
   G4double fLArAbsLength = 150.0 * CLHEP::cm;
   G4double fLArFastTime = 7.0 * CLHEP::ns;
   G4double fLArSlowTime = 1500.0 * CLHEP::ns;
@@ -321,6 +324,20 @@ public:
 
   void SetScintYieldPerMeV(G4double v) { fLArScintYieldPerMeV = v; UpdateConfigurableOpticalProperties(); }
   void SetScintYieldScale(G4double v) { fLArScintYieldScale = v; UpdateConfigurableOpticalProperties(); }
+  void SetIonScintYieldScale(G4double v) { fLArIonScintYieldScale = v; }
+  G4double GetIonScintYieldScale() const { return fLArIonScintYieldScale; }
+  G4bool IsInsideScintillatingLAr(const G4ThreeVector& position) const {
+      // The LAr cylinders' local z axes are rotated onto global y.
+      const G4double radial2 = position.x() * position.x() +
+                               position.z() * position.z();
+      const G4bool insideInner =
+          radial2 <= fInnerRadius * fInnerRadius &&
+          std::abs(position.y()) <= 0.5 * fInnerHeight;
+      const G4bool insideOuter = fOuterScintillation &&
+          radial2 <= 0.25 * fOuterDiameter * fOuterDiameter &&
+          std::abs(position.y()) <= 0.5 * fOuterHeight;
+      return insideInner || insideOuter;
+  }
   void SetFastTimeNs(G4double v) { fLArFastTime = v * CLHEP::ns; UpdateConfigurableOpticalProperties(); }
   void SetSlowTimeNs(G4double v) { fLArSlowTime = v * CLHEP::ns; UpdateConfigurableOpticalProperties(); }
   void SetFastFraction(G4double v) { fLArFastFraction = v; UpdateConfigurableOpticalProperties(); }

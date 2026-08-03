@@ -71,7 +71,7 @@ void ActionInitialization::Build() const
 
   SetUserAction(new SteppingAction(fDetector,eventaction));
 
-  SetUserAction(new StackingAction(eventaction));
+  SetUserAction(new StackingAction(fDetector,eventaction));
 }  
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......

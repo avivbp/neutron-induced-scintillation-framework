@@ -58,6 +58,7 @@ private:
     G4UIcmdWithADouble* fBirksMmPerMeVCmd    = nullptr;
     G4UIcmdWithADouble* fScintYieldCmd       = nullptr;
     G4UIcmdWithADouble* fScintScaleCmd       = nullptr;
+    G4UIcmdWithADouble* fIonScintScaleCmd    = nullptr;
     G4UIcmdWithADouble* fFastTimeCmd         = nullptr;
     G4UIcmdWithADouble* fSlowTimeCmd         = nullptr;
     G4UIcmdWithADouble* fFastFractionCmd     = nullptr;

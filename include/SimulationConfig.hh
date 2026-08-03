@@ -15,7 +15,8 @@ struct SimulationConfig {
   double outerHeightCm = 70.0;
 
   double larScintYieldPerMeV = 51300.0;
-  double larYieldScale = 0.01;
+  double larYieldScale = 1.0;
+  double larIonYieldScale = 0.3;
   double larAbsLengthCm = 150.0;
   double larFastTimeNs = 7.0;
   double larSlowTimeNs = 1500.0;

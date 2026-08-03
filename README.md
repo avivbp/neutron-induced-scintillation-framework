@@ -215,6 +215,32 @@ including `birks_constant_mm_per_MeV`. If Birks or another light-production
 setting changes, rerun the gamma calibration and use the newly generated config
 for neutron work.
 
+The global electron-recoil yield should remain at full scale. Nuclear recoils
+are reduced separately during photon creation:
+
+```yaml
+optics:
+  lar:
+    scintillation_yield_per_MeV: 51300.0
+    scintillation_yield_scale: 1.0
+    birks_constant_mm_per_MeV: 0.03
+    ion_scintillation_yield_scale: 0.3
+    outer_scintillation: false
+```
+
+Geant4 11 makes its built-in particle-dependent scintillation mode mutually
+exclusive with Birks saturation. This framework therefore retains the normal
+Birks calculation and statistically keeps each LAr scintillation photon from
+an ion recoil with probability `ion_scintillation_yield_scale`. This occurs
+before photon transport and sensor detection. Gamma-induced electron-recoil
+photons are not thinned.
+
+Outer-LAr scintillation is disabled for neutron runs, so neutron `numPhotons`,
+`eDep`, and `numPE` describe inner-cell scintillation only. Gamma calibration
+enables both identical LAr volumes and fits total created photons against total
+deposited energy; that material light-yield relation is then evaluated at the
+neutron event's inner-cell `eDep`.
+
 ### Run
 
 ```bash
@@ -375,20 +401,40 @@ TOF-window conditions pass. Important columns include:
 
 ## Neutron scintillation correction
 
-Post-analysis applies the event-level correction:
+For newly simulated data, gamma calibration enables this normalization:
 
 ```text
+E_dep               = innerCell energy deposit from the event CSV
+N_ph,expected,gamma = a * E_dep,MeV + b
+correction_factor   = N_ph,expected,gamma / N_ph,simulated
+numPE_corrected     = numPE_raw * correction_factor
+```
+
+This is evaluated separately for every event using inner-cell `eDep`,
+`numPhotons`, and `numPE`. Only after each event is corrected are values grouped
+and averaged for plots. The formula does not multiply by Leff because the `0.3`
+ion efficiency was already sampled during photon production.
+
+### Legacy post-analysis correction
+
+The previous deterministic correction is retained only for reproducing older
+runs:
+
+```text
+E_dep               = innerCell energy deposit from the event CSV
 N_ph,expected,gamma = a * E_dep,MeV + b
 N_ph,expected,NR    = N_ph,expected,gamma * Leff(E_dep)
 correction_factor   = N_ph,expected,NR / N_ph,simulated
 numPE_corrected     = numPE_raw * correction_factor
 ```
 
-Raw `numPE` remains the trigger/cut quantity. Correction is applied only after
-the event-selection stage.
+Do not select `legacy_post` for newly simulated data using
+`ion_scintillation_yield_scale`; doing so would apply Leff twice. Gamma
+calibration writes the fitted line into the generated config, selects
+`mode: simulation_native`, and enables the gamma-only normalization.
 
-The generated calibrated config enables correction automatically. The current
-example uses constant nuclear-recoil efficiency:
+For reproducing an older unquenched simulation, the legacy constant efficiency
+is still accepted:
 
 ```yaml
 leff:
@@ -403,14 +449,14 @@ The gamma relation may be supplied either as fitted coefficients:
 
 ```yaml
 gamma_calibration:
-  slope_photons_per_MeV: 15390.0
+  slope_photons_per_MeV: 51300.0
   intercept_photons: 0.0
 ```
 
 or as at least two energy/photon points. If a slope is present, coefficients
 take precedence.
 
-## Corrected PE post-analysis
+## PE post-analysis
 
 Standalone analysis:
 
@@ -438,7 +484,11 @@ Outputs include:
 - `run_summary_by_detector.csv`
 - combined coverage-versus-PE plots
 - one coverage plot per neutron detector
+- a separate true-single-elastic mean-PE series on every money plot
+- raw-versus-corrected event-level PE histograms under one subdirectory per
+  neutron detector and one PNG per optical configuration
 - raw-versus-corrected PE plots by detector angle
+- mean-PE plots with event-to-event sample standard deviation error bars
 - correction diagnostics such as raw/corrected mean PE and mean correction
   factor.
 
@@ -663,8 +713,9 @@ larsim-event-types output/neutron_5MeV
 - Every gamma calibration archives `config_used.yaml` and produces its own
   macros, raw event CSVs, logs, fitted points, and reusable calibrated config.
 - Keep one output directory and preferably one derived YAML per neutron energy.
-- Gamma calibration coefficients are tied to the configured LAr scintillation
-  model, including yield scale and Birks constant.
+- Gamma calibration coefficients are tied to the configured electron-recoil
+  LAr scintillation model, including yield scale and Birks constant. The ion
+  scale affects neutron photon production but not gamma calibration.
 - YAML inline and block sequence styles are semantically equivalent.
 - Generated files under `output/`, CSVs, logs, build directories, and generated
   macros are ignored by default through `.gitignore`.

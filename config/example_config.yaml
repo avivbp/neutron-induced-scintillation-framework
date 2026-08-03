@@ -47,7 +47,13 @@ geometry:
 optics:
   lar:
     scintillation_yield_per_MeV: 51300.0
-    scintillation_yield_scale: 0.3
+    # Full electron-recoil yield. Nuclear recoils are quenched separately at
+    # photon creation, after the gamma-fitted Birks response is evaluated.
+    scintillation_yield_scale: 1.0
+    ion_scintillation_yield_scale: 0.3
+    # Only the inner cell is an active scintillation volume. This keeps eDep,
+    # numPhotons, and numPE consistent for the event-level correction.
+    outer_scintillation: false
     absorption_length_cm: 150.0
     fast_time_ns: 7.0
     slow_time_ns: 1500.0
@@ -109,17 +115,19 @@ analysis:
     # be at least this fraction of the primary gamma energy.
     minimum_deposit_fraction: 0.99
     output_dir: output/gamma_calibration
-  # Apply the event-level correction described in the thesis after the
-  # experimental event selection. Raw numPE remains the trigger/cut quantity.
+  # Gamma-derived light normalization. Gamma calibration inserts the fitted
+  # line and enables this automatically. simulation_native does not multiply
+  # by Leff because ion_scintillation_yield_scale already applied it.
   neutron_scintillation_correction:
     enabled: false
+    mode: simulation_native
     # Gamma light-yield relation consumed by neutron post-analysis:
     #   N_ph,gamma = slope_photons_per_MeV * eDep_MeV + intercept_photons
     # Running scripts/calibrate_gamma_trend.py writes the fitted values into
     # output/gamma_calibration/config_with_gamma_trend.yaml automatically.
     gamma_calibration:
       # Format A: use already-fitted coefficients (the normal workflow).
-      slope_photons_per_MeV: 15390.0
+      slope_photons_per_MeV: 51300.0
       intercept_photons: 0.0
       # Format B: alternatively, delete slope_photons_per_MeV and
       # intercept_photons above, then supply >=2 [energy, mean photons] points.

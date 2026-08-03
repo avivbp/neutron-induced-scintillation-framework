@@ -21,6 +21,7 @@
 /det/setBirksMmPerMeV {{lar_birks_constant_mm_per_MeV}}
 /det/setScintYieldPerMeV {{lar_scintillation_yield_per_MeV}}
 /det/setScintYieldScale {{lar_scintillation_yield_scale}}
+/det/setIonScintYieldScale {{lar_ion_scintillation_yield_scale}}
 /det/setFastTimeNs {{lar_fast_time_ns}}
 /det/setSlowTimeNs {{lar_slow_time_ns}}
 /det/setFastFraction {{lar_fast_fraction}}

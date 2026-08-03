@@ -15,16 +15,18 @@
 /det/setInnerHeightCm 10.0
 /det/setOuterDiameterCm 35.0
 /det/setOuterHeightCm 70.0
+/det/setOuterScintillation true
 /det/setNeutronDetectors A0:25:100;A1:40:100;A2:50:100;A3:60:100;A4:90:100;A5:120:100;A6:150:100
 /det/setPMTSideCm 2.54
 /det/setSiPMTileCm 0.6
-/det/setTOFWindowNs 8.793 15.362
-/det/setPrimaryEnergyMeV 40.0
+/det/setTOFWindowNs 16.538 23.518
+/det/setPrimaryEnergyMeV 14.0
 
 /det/setAbsLengthCm 150.0
 /det/setBirksMmPerMeV 0.03
 /det/setScintYieldPerMeV 51300.0
-/det/setScintYieldScale 0.3
+/det/setScintYieldScale 1.0
+/det/setIonScintYieldScale 0.3
 /det/setFastTimeNs 7.0
 /det/setSlowTimeNs 1500.0
 /det/setFastFraction 0.75
@@ -54,4 +56,4 @@
 /det/setBotPMTs 4
 /det/setSiPMRows 0
 
-/run/beamOn 1500000
+/run/beamOn 500000

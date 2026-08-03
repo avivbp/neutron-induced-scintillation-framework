@@ -10,6 +10,7 @@ event types and reports counts and relative frequencies.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 from pathlib import Path
 
@@ -148,7 +149,24 @@ def configured_detector_angles(run_dir: Path) -> dict[str, float]:
 def summarize_run(run_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     classified_frames: list[pd.DataFrame] = []
     rows: list[dict] = []
-    for path in sorted(run_dir.glob(FILE_PATTERN)):
+    paths = sorted(run_dir.glob(FILE_PATTERN))
+    metadata_path = run_dir / "scan_metadata.json"
+    if metadata_path.exists():
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            expected_names = {
+                f"numPE_{int(row['top_pmts'])}_topPMTs_"
+                f"{int(row['bottom_pmts'])}_botPMTs_"
+                f"{int(row['sipm_rows'])}_SiPMRows.csv"
+                for row in metadata
+            }
+            stale = [path.name for path in paths if path.name not in expected_names]
+            if stale:
+                print(f"[event types] ignoring stale CSV files: {', '.join(stale)}")
+            paths = [path for path in paths if path.name in expected_names]
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            print(f"[event types] warning: could not use {metadata_path}: {exc}")
+    for path in paths:
         try:
             frame = load_and_classify(path)
         except (OSError, pd.errors.ParserError, ValueError) as exc:

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Event-level neutron scintillation correction used by the analysis.
 
-The implemented prescription is
+The simulation-native prescription is
 
-    numPE_corrected = numPE * Nph_expected / numPhotons
-    Nph_expected = (a * eDep_MeV + b) * Leff(eDep_keV)
+    numPE_corrected = numPE * (a * eDep_MeV + b) / numPhotons
 
 where ``a`` and ``b`` either come directly from the analysis configuration or
-are fitted from configured gamma-calibration points.
+are fitted from configured gamma-calibration points. Nuclear-recoil Leff is
+already applied during simulated photon production. ``legacy_post`` mode keeps
+the former additional Leff multiplication for older unquenched simulations.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import pandas as pd
 
 @dataclass(frozen=True)
 class CorrectionInfo:
+    mode: str
     slope_photons_per_MeV: float
     intercept_photons: float
     leff_min_keV: float
@@ -130,6 +132,12 @@ def apply_correction(
             )
 
     slope, intercept = _gamma_line(config)
+    mode = str(config.get("mode", "legacy_post")).lower()
+    if mode not in {"simulation_native", "legacy_post"}:
+        raise ValueError(
+            "neutron scintillation correction mode must be "
+            "simulation_native or legacy_post"
+        )
     leff_config = config.get("leff", {})
     if not isinstance(leff_config, dict):
         raise ValueError("leff must be a mapping")
@@ -139,7 +147,14 @@ def apply_correction(
     edep_MeV = pd.to_numeric(result["eDep"], errors="coerce").to_numpy(dtype=float)
     edep_keV = 1000.0 * edep_MeV
 
-    if "constant" in leff_config:
+    if mode == "simulation_native":
+        # Leff has already been sampled at photon creation. Do not multiply it
+        # into the gamma-derived normalization a second time.
+        leff = np.ones(len(result), dtype=float)
+        leff_min_keV = 0.0
+        leff_max_keV = float("inf")
+        extrapolation = "simulation_native"
+    elif "constant" in leff_config:
         constant_leff = float(leff_config["constant"])
         if not np.isfinite(constant_leff) or constant_leff < 0:
             raise ValueError("leff.constant must be a finite non-negative number")
@@ -163,7 +178,7 @@ def apply_correction(
         leff_min_keV = float(leff_energy[0])
         leff_max_keV = float(leff_energy[-1])
     expected_gamma_photons = slope * edep_MeV + intercept
-    expected_nr_photons = expected_gamma_photons * leff
+    expected_target_photons = expected_gamma_photons * leff
 
     valid = (
         np.isfinite(raw_pe)
@@ -171,22 +186,27 @@ def apply_correction(
         & (raw_photons > 0)
         & np.isfinite(edep_MeV)
         & (edep_MeV >= 0)
-        & np.isfinite(expected_nr_photons)
-        & (expected_nr_photons >= 0)
+        & np.isfinite(expected_target_photons)
+        & (expected_target_photons >= 0)
     )
     factor = np.full(len(result), np.nan, dtype=float)
     corrected_pe = np.full(len(result), np.nan, dtype=float)
-    factor[valid] = expected_nr_photons[valid] / raw_photons[valid]
+    factor[valid] = expected_target_photons[valid] / raw_photons[valid]
     corrected_pe[valid] = raw_pe[valid] * factor[valid]
 
     result["numPE_raw"] = raw_pe
+    result["neutron_scintillation_correction_mode"] = mode
     result["Leff"] = leff
+    result["correction_energy_MeV"] = edep_MeV
     result["numPhotons_expected_gamma"] = expected_gamma_photons
-    result["numPhotons_expected_NR"] = expected_nr_photons
+    result["numPhotons_expected_correction_target"] = expected_target_photons
+    # Retain the historical column for compatibility with existing notebooks.
+    result["numPhotons_expected_NR"] = expected_target_photons
     result["neutron_scintillation_correction_factor"] = factor
     result["numPE_corrected"] = corrected_pe
 
     return result, CorrectionInfo(
+        mode=mode,
         slope_photons_per_MeV=slope,
         intercept_photons=intercept,
         leff_min_keV=leff_min_keV,

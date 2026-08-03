@@ -1271,6 +1271,11 @@ if (printOpticalConfig == 1)
                << " photons/MeV"
                << G4endl;
 
+        G4cout << "Configured LAr ion/electron scintillation ratio = "
+               << fLArIonScintYieldScale
+               << " (applied after Birks, before optical transport)"
+               << G4endl;
+
         G4cout << "Configured absorption length = "
                << fLArAbsLength / CLHEP::cm
                << " cm"

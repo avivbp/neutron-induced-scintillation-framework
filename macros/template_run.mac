@@ -15,6 +15,7 @@
 /det/setInnerHeightCm {{inner_lar_height_cm}}
 /det/setOuterDiameterCm {{outer_lar_diameter_cm}}
 /det/setOuterHeightCm {{outer_lar_height_cm}}
+/det/setOuterScintillation {{lar_outer_scintillation}}
 /det/setNeutronDetectors {{neutron_detector_config}}
 /det/setPMTSideCm {{pmt_side_length_cm}}
 /det/setSiPMTileCm {{sipm_tile_size_cm}}
@@ -25,6 +26,7 @@
 /det/setBirksMmPerMeV {{lar_birks_constant_mm_per_MeV}}
 /det/setScintYieldPerMeV {{lar_scintillation_yield_per_MeV}}
 /det/setScintYieldScale {{lar_scintillation_yield_scale}}
+/det/setIonScintYieldScale {{lar_ion_scintillation_yield_scale}}
 /det/setFastTimeNs {{lar_fast_time_ns}}
 /det/setSlowTimeNs {{lar_slow_time_ns}}
 /det/setFastFraction {{lar_fast_fraction}}

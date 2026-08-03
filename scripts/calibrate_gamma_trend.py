@@ -290,7 +290,11 @@ def write_results(
     correction = updated.setdefault("analysis", {}).setdefault(
         "neutron_scintillation_correction", {}
     )
+    # Normalize the simulated neutron light response to the fitted gamma line.
+    # Native mode deliberately omits Leff because it was already sampled when
+    # nuclear-recoil scintillation photons were produced.
     correction["enabled"] = True
+    correction["mode"] = "simulation_native"
     correction["gamma_calibration"] = {
         "slope_photons_per_MeV": slope,
         "intercept_photons": intercept,
