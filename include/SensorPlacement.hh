@@ -6,6 +6,8 @@
 #include "G4ThreeVector.hh"
 #include "globals.hh"
 
+#include <vector>
+
 class G4LogicalVolume;
 class G4VPhysicalVolume;
 
@@ -46,5 +48,25 @@ struct SensorPlacement {
   G4int groupIndex = 0;
   G4int copyNumber = 0;
 };
+
+struct BoxFaceGridConfig {
+  G4String group;
+  G4String physicalVolumeName = "SensorTilePV";
+  SensorType type = SensorType::SiPM;
+  SensorSurface face = SensorSurface::BoxPositiveX;
+  G4ThreeVector boxDimensions;
+  G4double activeWidth = 0.0;
+  G4double activeHeight = 0.0;
+  G4double thickness = 0.0;
+  G4double pitchU = 0.0;
+  G4double pitchV = 0.0;
+  G4double edgeClearance = 0.0;
+  G4double inset = 0.0;
+  G4LogicalVolume* hostLogicalVolume = nullptr;
+  G4VPhysicalVolume* hostPhysicalVolume = nullptr;
+};
+
+std::vector<SensorPlacement>
+GenerateBoxFaceGridPlacements(const BoxFaceGridConfig& config);
 
 #endif

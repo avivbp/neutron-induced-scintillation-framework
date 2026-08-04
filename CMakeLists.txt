@@ -39,6 +39,15 @@ target_link_libraries(TestEm5 ${Geant4_LIBRARIES} ${HBOOK_LIBRARIES})
 add_executable(LArLightSim TestEm5.cc ${sources} ${headers} ${TOOLS_FORTRAN_OBJECTS})
 target_link_libraries(LArLightSim ${Geant4_LIBRARIES} ${HBOOK_LIBRARIES})
 
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(SensorPlacementTest
+                 tests/SensorPlacementTest.cc
+                 src/SensorPlacement.cc)
+  target_link_libraries(SensorPlacementTest ${Geant4_LIBRARIES})
+  add_test(NAME SensorPlacementTest COMMAND SensorPlacementTest)
+endif()
+
 
 #----------------------------------------------------------------------------
 # Copy all scripts to the build directory, i.e. the directory in which we
@@ -60,4 +69,3 @@ endforeach()
 # Install the executable to 'bin' directory under CMAKE_INSTALL_PREFIX
 #
 install(TARGETS TestEm5 DESTINATION bin)
-
