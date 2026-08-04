@@ -58,7 +58,6 @@ class SteppingAction : public G4UserSteppingAction
 
   private:
    G4Material*      fTPBMat        = nullptr;
-   G4LogicalVolume* fInnerCellLV   = nullptr;
 
   public:
    std::ofstream csvfile;

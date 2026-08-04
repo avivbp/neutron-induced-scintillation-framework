@@ -77,7 +77,6 @@ SteppingAction::SteppingAction(DetectorConstruction* DET,
                                EventAction* EA)
 :G4UserSteppingAction(),fDetector(DET), fEventAction(EA)
 { fTPBMat = fDetector->GetTPBMaterial();
-  fInnerCellLV = fDetector->GetInnerCellLV();
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -228,12 +227,10 @@ if (verbose2){
   // ---- BEGIN: universal guards (paste near top of UserSteppingAction) ----
 const bool isOpt = (particleDef == opticalphoton);
 
-// Count each scintillation photon once, before WLS or transport losses. The
-// configured analysis uses innerCell only; the optional outer flag is retained
-// for explicitly requested studies.
-const G4bool countOuterLAr = fDetector->GetOuterScintillation();
-const G4bool isCountedLAr =
-    volumeName == "innerCell" || (countOuterLAr && volumeName == "outerCell");
+// Count each scintillation photon once, before WLS or transport losses. Active
+// LAr membership is assigned by detector construction, independent of names or
+// detector shape.
+const G4bool isCountedLAr = fDetector->IsActiveLAr(preLV);
 if (isOpt && stepNo == 1 && isCountedLAr &&
     (!creator || creator->GetProcessName() != "OpWLS")) {
   ++fEventAction->numPhotons;
@@ -620,13 +617,17 @@ std::cout << "after hmm2)" << std::endl;
           }
       }
 
-      // calculate neutron angle relative to beam line as it goes into fiducial volume
-      if (volumeName == "innerLayer" && postVolume->GetName() == "innerCell" && processName == "Transportation" && fEventAction->tZero == 10000){
+      // Calculate neutron angle relative to the beam line as it enters the
+      // configured fiducial LAr from cryostat material.
+      if (fDetector->HasVolumeRole(preLV, DetectorConstruction::VolumeRole::Cryostat) &&
+          fDetector->IsFiducialLAr(postLV) &&
+          processName == "Transportation" && fEventAction->tZero == 10000){
           G4double incomingAngle = calcAngle(G4ThreeVector(1,0,0),initMomentum);
           fEventAction->incomingAng = incomingAngle;
       }
 
-      if (volumeName == "innerCell" && trans.compare(processName) != 0 && fEventAction->tZero > postStepTime){
+      if (fDetector->IsFiducialLAr(preLV) &&
+          trans.compare(processName) != 0 && fEventAction->tZero > postStepTime){
           //std::cout << "interaction in fiducial volume" << std::endl;
 
           fEventAction->fiducialIncomingEn = pre_Ekin;
@@ -634,13 +635,13 @@ std::cout << "after hmm2)" << std::endl;
           //std::cout << "tZero = " << postStepTime << " ns" << std::endl;
       }
 
-      if (volumeName == "innerCell" && elastic.compare(processName) == 0){
+      if (fDetector->IsFiducialLAr(preLV) && elastic.compare(processName) == 0){
           fEventAction->nucleusRecoilEnergy += pre_Ekin - post_Ekin;
           fEventAction->numElasticSensitive += 1;
           fEventAction->innerCellEDep += eDiff;
       }
 
-      if (volumeName == "innerCell" && inelastic.compare(processName) == 0){
+      if (fDetector->IsFiducialLAr(preLV) && inelastic.compare(processName) == 0){
           //ONLY FOR TOF RUN, REMOVE LATER!!!!
           //G4EventManager::GetEventManager()->AbortCurrentEvent();
           fEventAction->numInelasticSensitive += 1;

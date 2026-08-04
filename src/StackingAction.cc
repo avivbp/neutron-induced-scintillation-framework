@@ -80,7 +80,7 @@ StackingAction::ClassifyNewTrack(const G4Track* aTrack)
       aTrack->GetCreatorProcess()->GetProcessName() == "Scintillation") {
     const auto parent = fNuclearTrack.find(aTrack->GetParentID());
     const G4bool isLAr =
-        fDetector->IsInsideScintillatingLAr(aTrack->GetPosition());
+        fDetector->IsActiveLAr(aTrack->GetLogicalVolumeAtVertex());
     if (isLAr && parent != fNuclearTrack.end() && parent->second &&
         G4UniformRand() > fDetector->GetIonScintYieldScale()) {
       return fKill;

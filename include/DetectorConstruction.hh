@@ -178,6 +178,15 @@ private:
 public:
   void RegisterVolumeRole(const G4LogicalVolume* volume, VolumeRole role);
   G4bool HasVolumeRole(const G4LogicalVolume* volume, VolumeRole role) const;
+  G4bool IsActiveLAr(const G4LogicalVolume* volume) const {
+    return HasVolumeRole(volume, VolumeRole::ActiveLAr);
+  }
+  G4bool IsFiducialLAr(const G4LogicalVolume* volume) const {
+    return HasVolumeRole(volume, VolumeRole::FiducialLAr);
+  }
+  G4bool IsInactiveLAr(const G4LogicalVolume* volume) const {
+    return HasVolumeRole(volume, VolumeRole::InactiveLAr);
+  }
   void ClearVolumeRoles();
 
   void BuildPMTPatches();   // builds 4 top + 4 bottom (max)
@@ -345,18 +354,6 @@ public:
   void SetScintYieldScale(G4double v) { fLArScintYieldScale = v; UpdateConfigurableOpticalProperties(); }
   void SetIonScintYieldScale(G4double v) { fLArIonScintYieldScale = v; }
   G4double GetIonScintYieldScale() const { return fLArIonScintYieldScale; }
-  G4bool IsInsideScintillatingLAr(const G4ThreeVector& position) const {
-      // The LAr cylinders' local z axes are rotated onto global y.
-      const G4double radial2 = position.x() * position.x() +
-                               position.z() * position.z();
-      const G4bool insideInner =
-          radial2 <= fInnerRadius * fInnerRadius &&
-          std::abs(position.y()) <= 0.5 * fInnerHeight;
-      const G4bool insideOuter = fOuterScintillation &&
-          radial2 <= 0.25 * fOuterDiameter * fOuterDiameter &&
-          std::abs(position.y()) <= 0.5 * fOuterHeight;
-      return insideInner || insideOuter;
-  }
   void SetFastTimeNs(G4double v) { fLArFastTime = v * CLHEP::ns; UpdateConfigurableOpticalProperties(); }
   void SetSlowTimeNs(G4double v) { fLArSlowTime = v * CLHEP::ns; UpdateConfigurableOpticalProperties(); }
   void SetFastFraction(G4double v) { fLArFastFraction = v; UpdateConfigurableOpticalProperties(); }
