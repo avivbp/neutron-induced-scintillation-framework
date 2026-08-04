@@ -46,6 +46,10 @@ if(BUILD_TESTING)
                  src/SensorPlacement.cc)
   target_link_libraries(SensorPlacementTest ${Geant4_LIBRARIES})
   add_test(NAME SensorPlacementTest COMMAND SensorPlacementTest)
+  add_executable(NeutronInteractionTest
+                 tests/NeutronInteractionTest.cc
+                 src/NeutronInteraction.cc)
+  add_test(NAME NeutronInteractionTest COMMAND NeutronInteractionTest)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   add_test(NAME ConfigToolsTest
            COMMAND ${Python3_EXECUTABLE} tests/test_config_tools.py)

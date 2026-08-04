@@ -6,6 +6,8 @@
 /event/verbose 0
 /tracking/verbose 0
 
+/det/setRunLabel {{config_id}}
+
 # ---------------------------------------------------------------------------
 # Pre-initialization settings: geometry + material/optical physics.
 # These must be set before /run/initialize because they affect constructed

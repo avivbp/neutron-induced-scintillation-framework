@@ -674,6 +674,35 @@ G4bool DetectorConstruction::HasVolumeRole(const G4LogicalVolume* volume,
   return (found->second & static_cast<std::uint32_t>(role)) != 0u;
 }
 
+G4String DetectorConstruction::DescribeVolumeRoles(
+    const G4LogicalVolume* volume) const
+{
+  struct NamedRole {
+    VolumeRole role;
+    const char* name;
+  };
+  static const NamedRole roles[] = {
+      {VolumeRole::ActiveLAr, "active_lar"},
+      {VolumeRole::FiducialLAr, "fiducial_lar"},
+      {VolumeRole::InactiveLAr, "inactive_lar"},
+      {VolumeRole::Cryostat, "cryostat"},
+      {VolumeRole::OpticalDetector, "optical_detector"},
+      {VolumeRole::ExternalDetector, "external_detector"},
+  };
+
+  G4String result;
+  for (const auto& namedRole : roles) {
+    if (!HasVolumeRole(volume, namedRole.role)) {
+      continue;
+    }
+    if (!result.empty()) {
+      result += '|';
+    }
+    result += namedRole.name;
+  }
+  return result.empty() ? "unassigned" : result;
+}
+
 void DetectorConstruction::ClearVolumeRoles()
 {
   fVolumeRoles.clear();

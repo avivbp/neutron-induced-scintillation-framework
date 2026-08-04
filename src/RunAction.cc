@@ -35,6 +35,7 @@
 #include "PrimaryGeneratorAction.hh"
 #include "HistoManager.hh"
 #include "Run.hh"
+#include "NeutronInteraction.hh"
 #include "G4Run.hh"
 #include "G4UnitsTable.hh"
 #include "G4EmCalculator.hh"
@@ -95,6 +96,12 @@ void RunAction::BeginOfRunAction(const G4Run*)
   csvfile << "process,distance" << "," << std::endl;
   // show Rndm status
   if (IsMaster()) {
+      const auto interactionFilename =
+          NeutronInteractionCsvFilename(fDetector->GetRunLabel());
+      if (!InitializeNeutronInteractionCsv(interactionFilename)) {
+          G4cerr << "[interaction truth] could not initialize "
+                << interactionFilename << G4endl;
+      }
       G4Random::showEngineStatus();
       auto* pm = G4Electron::Electron()->GetProcessManager();
       auto* p  = pm ? pm->GetProcess("Cerenkov") : nullptr;

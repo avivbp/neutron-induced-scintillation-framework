@@ -204,6 +204,8 @@ class SteppingAction : public G4UserSteppingAction
 
 
   private:
+    void RecordNeutronInteraction(const G4Step* step);
+
     DetectorConstruction* fDetector;
     EventAction*          fEventAction;
 };

@@ -6,6 +6,8 @@
 /event/verbose 0
 /tracking/verbose 0
 
+/det/setRunLabel {{config_id}}
+
 /det/setDetectorModel {{detector_model}}
 /det/setBoxDimensionsCm {{box_dimensions_cm}}
 /det/setBoxFiducialMarginCm {{box_fiducial_margin_cm}}

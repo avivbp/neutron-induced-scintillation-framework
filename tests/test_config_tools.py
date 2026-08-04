@@ -63,6 +63,7 @@ class ConfigToolsTest(unittest.TestCase):
             {"config_id": "box", "top_pmts": 0, "bottom_pmts": 0, "sipm_rows": 0},
         )
         macro = render_template(Path("macros/template_run.mac").read_text(), values)
+        self.assertIn("/det/setRunLabel box", macro)
         self.assertIn("/det/setDetectorModel box_cryostat", macro)
         self.assertIn(f"/det/setBoxSensorLayouts {expected}", macro)
         self.assertNotIn("{{", macro)

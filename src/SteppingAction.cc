@@ -44,7 +44,9 @@
 #include "G4Proton.hh"
 #include "G4Threading.hh"
 #include "G4ProcessManager.hh"
+#include "G4ProcessType.hh"
 #include "G4LogicalBorderSurface.hh"
+#include <utility>
 
 namespace {
   G4ThreadLocal G4OpBoundaryProcess* tlBoundaryProc = nullptr;
@@ -84,6 +86,65 @@ SteppingAction::SteppingAction(DetectorConstruction* DET,
 SteppingAction::~SteppingAction()
 {}
 
+void SteppingAction::RecordNeutronInteraction(const G4Step* step)
+{
+  const auto* track = step->GetTrack();
+  if (track->GetParticleDefinition() != G4Neutron::Definition()) {
+    return;
+  }
+
+  const auto* pre = step->GetPreStepPoint();
+  const auto* post = step->GetPostStepPoint();
+  const auto* process = post->GetProcessDefinedStep();
+  const std::string processName =
+      process ? process->GetProcessName() : "None";
+  const bool exitsWorld = post->GetStepStatus() == fWorldBoundary ||
+                          post->GetPhysicalVolume() == nullptr;
+  const bool isHadronic = process && process->GetProcessType() == fHadronic;
+  const auto channel =
+      ClassifyNeutronInteraction(processName, isHadronic, exitsWorld);
+  if (channel == NeutronInteractionChannel::None) {
+    return;
+  }
+
+  const auto* preVolume = pre->GetPhysicalVolume();
+  const auto* preLogical = preVolume ? preVolume->GetLogicalVolume() : nullptr;
+  const auto position = post->GetPosition();
+
+  NeutronInteractionRecord record;
+  record.eventId = G4RunManager::GetRunManager()
+                       ->GetCurrentEvent()->GetEventID();
+  record.trackId = track->GetTrackID();
+  record.parentId = track->GetParentID();
+  record.stepNumber = track->GetCurrentStepNumber();
+  record.volumeName = preVolume ? preVolume->GetName() : "out_of_world";
+  record.volumeRoles = fDetector->DescribeVolumeRoles(preLogical);
+  record.isFiducialLAr = fDetector->IsFiducialLAr(preLogical);
+  record.processName = processName;
+  record.channel = channel;
+  record.xCm = position.x() / CLHEP::cm;
+  record.yCm = position.y() / CLHEP::cm;
+  record.zCm = position.z() / CLHEP::cm;
+  record.timeNs = post->GetGlobalTime() / CLHEP::ns;
+  record.preKineticEnergyKeV = pre->GetKineticEnergy() / CLHEP::keV;
+  record.postKineticEnergyKeV = post->GetKineticEnergy() / CLHEP::keV;
+  record.localEnergyDepositKeV =
+      step->GetTotalEnergyDeposit() / CLHEP::keV;
+
+  const auto* secondaries = step->GetSecondaryInCurrentStep();
+  if (secondaries) {
+    record.secondaries.reserve(secondaries->size());
+    for (const auto* secondary : *secondaries) {
+      record.secondaries.push_back({
+          secondary->GetParticleDefinition()->GetParticleName(),
+          secondary->GetParticleDefinition()->GetPDGEncoding(),
+          secondary->GetKineticEnergy() / CLHEP::keV});
+    }
+  }
+
+  fEventAction->AddNeutronInteraction(std::move(record));
+}
+
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 void SteppingAction::UserSteppingAction(const G4Step* aStep)
@@ -120,14 +181,22 @@ void SteppingAction::UserSteppingAction(const G4Step* aStep)
   if (verbose2) {
       printEventStats(aStep,10);
   }
-  const G4String & processName = aStep->GetPostStepPoint()->GetProcessDefinedStep()->GetProcessName();
+  auto pre = aStep->GetPreStepPoint();
+  auto post = aStep->GetPostStepPoint();
+  auto prePV = pre->GetPhysicalVolume();
+  auto postPV = post->GetPhysicalVolume();
+  const auto* definingProcess = post->GetProcessDefinedStep();
+  const G4String processName =
+      definingProcess ? definingProcess->GetProcessName() : "None";
   const G4String & incomingParticleName = aStep->GetTrack()->GetParticleDefinition()->GetParticleName();
   auto* def = aStep->GetTrack()->GetParticleDefinition();
   bool isNeutron = (def == G4Neutron::Definition());
   bool isProton  = (def == G4Proton::Definition());
-  const G4String & volumeName = aStep->GetPreStepPoint()->GetTouchableHandle()->GetVolume()->GetName();
+  const G4String volumeName = prePV ? prePV->GetName() : "out_of_world";
   const std::vector< const G4Track *> * secondaries = aStep->GetSecondaryInCurrentStep();
   G4int size  = (int) (secondaries->size());
+
+  RecordNeutronInteraction(aStep);
 
   static G4ParticleDefinition* opticalphoton =
     G4OpticalPhoton::OpticalPhotonDefinition();
@@ -142,10 +211,6 @@ void SteppingAction::UserSteppingAction(const G4Step* aStep)
   G4double postStepTime = aStep->GetPostStepPoint()->GetGlobalTime()/CLHEP::ns;
   G4double preStepTime = aStep->GetPreStepPoint()->GetGlobalTime()/CLHEP::ns;
 
-  auto pre = aStep->GetPreStepPoint();
-  auto post = aStep->GetPostStepPoint();
-  auto prePV  = pre->GetPhysicalVolume();
-  auto postPV = post->GetPhysicalVolume();
   if (!prePV || !postPV) return;
   auto preLV  = prePV->GetLogicalVolume();
   auto postLV = postPV->GetLogicalVolume();
@@ -516,11 +581,6 @@ std::cout << "after optical)" << std::endl;
   if (hmm2 && isNeutron){
       //printEventStats(aStep,10);
       if (inelastic.compare(processName) == 0){ 
-          fEventAction->numInelastic += 1;
-          //fEventAction->aborted = true;
-          G4EventManager::GetEventManager()->AbortCurrentEvent();
-          //run->addNumInelastic();
-     
           G4int ns = 0;
           G4int ps = 0;
           for(int i = 0; i < size; i++){
@@ -642,23 +702,16 @@ std::cout << "after hmm2)" << std::endl;
       }
 
       if (fDetector->IsFiducialLAr(preLV) && elastic.compare(processName) == 0){
-          fEventAction->nucleusRecoilEnergy += pre_Ekin - post_Ekin;
-          fEventAction->numElasticSensitive += 1;
           fEventAction->innerCellEDep += eDiff;
       }
 
       if (fDetector->IsFiducialLAr(preLV) && inelastic.compare(processName) == 0){
           //ONLY FOR TOF RUN, REMOVE LATER!!!!
           //G4EventManager::GetEventManager()->AbortCurrentEvent();
-          fEventAction->numInelasticSensitive += 1;
           if (NNprime){
               fEventAction->innerCellEDep += pre_Ekin - (*secondaries)[0]->GetKineticEnergy()/CLHEP::keV;
           }
       }
-
-       if (processName == "nCapture"){
-           fEventAction->nCapture = true;
-       }
 
 
       // if a neutron has an interaction with the liquid scintillator

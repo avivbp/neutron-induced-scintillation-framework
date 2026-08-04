@@ -189,6 +189,7 @@ private:
   G4double fTOFMinNs = 40.0;
   G4double fTOFMaxNs = 50.0;
   G4double fPrimaryEnergy = 2.5 * CLHEP::MeV;
+  G4String fRunLabel;
 
   // ------------------ Optical/scintillation config ------------------
   G4double fLArScintYieldPerMeV = 51300.0;
@@ -211,6 +212,8 @@ public:
   void SetBoxFiducialMarginCm(const G4String& margins);
   void SetBoxCryostatThicknessCm(G4double thickness);
   void SetBoxSensorLayouts(const G4String& layouts);
+  void SetRunLabel(const G4String& label) { fRunLabel = label; }
+  const G4String& GetRunLabel() const { return fRunLabel; }
   DetectorModel GetDetectorModel() const { return fDetectorModel; }
 
   void RegisterVolumeRole(const G4LogicalVolume* volume, VolumeRole role);
@@ -224,6 +227,7 @@ public:
   G4bool IsInactiveLAr(const G4LogicalVolume* volume) const {
     return HasVolumeRole(volume, VolumeRole::InactiveLAr);
   }
+  G4String DescribeVolumeRoles(const G4LogicalVolume* volume) const;
   void ClearVolumeRoles();
 
   std::vector<SensorPlacement> GenerateLegacyCylinderPMTPlacements() const;
@@ -444,6 +448,7 @@ public:
     G4LogicalVolume* logicFiber = new G4LogicalVolume(solidFiber,  // solid
                                      fibMat,                      // material
                                      name);                       // name
+    RegisterVolumeRole(logicFiber, VolumeRole::ExternalDetector);
 
     // rotation around y axis
     // u, v, w are the daughter axes, projected on the mother frame

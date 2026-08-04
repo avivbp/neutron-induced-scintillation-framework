@@ -44,6 +44,7 @@
 #include <fstream>
 #include <atomic>
 #include <memory>
+#include <utility>
 #include "G4Threading.hh"
 #include "G4AutoLock.hh"
 #include "G4UImanager.hh"
@@ -51,6 +52,7 @@
 namespace {
   G4Mutex gammaCsvMutex = G4MUTEX_INITIALIZER;
   std::atomic<G4long> gammaPrimariesCompleted{0};
+  std::atomic<bool> interactionCsvWarningPrinted{false};
 
   // One set of files *per worker thread* (no mutex required).
   thread_local std::unique_ptr<std::ofstream> tls_hits;
@@ -145,6 +147,7 @@ void EventAction::BeginOfEventAction(const G4Event* evt )
  detector = ""; 
  Coincedence = true;
  std::ostringstream().swap(buf_hits);
+ fNeutronInteractions.clear();
  ClearWLSDeDupe();
  //ClearBornInnerScint();
  //ClearSeenUV();
@@ -166,6 +169,19 @@ void EventAction::EndOfEventAction(const G4Event* evt)
   
   Run* run = static_cast<Run*>(G4RunManager::GetRunManager()->GetNonConstCurrentRun());
   G4int eventID = evt->GetEventID();
+  const DetectorConstruction* det = static_cast<const DetectorConstruction*>(
+      G4RunManager::GetRunManager()->GetUserDetectorConstruction());
+
+  UpdateNeutronInteractionSummary();
+  const auto interactionFilename =
+      NeutronInteractionCsvFilename(det->GetRunLabel());
+  if (!AppendNeutronInteractionCsv(fNeutronInteractions,
+                                   interactionFilename) &&
+      !interactionCsvWarningPrinted.exchange(true)) {
+      G4cerr << "[interaction truth] could not append "
+            << interactionFilename
+            << G4endl;
+  }
 
   //std::cout << "end of eventAction number: " << eventID << std::endl;
 
@@ -186,7 +202,6 @@ void EventAction::EndOfEventAction(const G4Event* evt)
   //run->fCsv.FlushBuffered();
 
   const PrimaryGeneratorAction* prim = static_cast<const PrimaryGeneratorAction*>(G4RunManager::GetRunManager()->GetUserPrimaryGeneratorAction());
-  const DetectorConstruction* det = static_cast<const DetectorConstruction*>(G4RunManager::GetRunManager()->GetUserDetectorConstruction());
   G4double energy = prim->GetParticleGun()->GetParticleEnergy()/CLHEP::MeV;
   const G4String primaryName =
       prim->GetParticleGun()->GetParticleDefinition()->GetParticleName();
@@ -336,6 +351,37 @@ void EventAction::EndOfEventAction(const G4Event* evt)
   //  G4AnalysisManager::Instance()->FillNtupleDColumn(1,fEnergyDeposit);
    // G4AnalysisManager::Instance()->AddNtupleRow();
  //   }
+}
+
+void EventAction::AddNeutronInteraction(NeutronInteractionRecord record)
+{
+  record.interactionIndex = fNeutronInteractions.size();
+  fNeutronInteractions.push_back(std::move(record));
+}
+
+void EventAction::UpdateNeutronInteractionSummary()
+{
+  numInelastic = 0;
+  numElasticSensitive = 0;
+  numInelasticSensitive = 0;
+  nCapture = false;
+  nucleusRecoilEnergy = 0.0;
+
+  for (const auto& interaction : fNeutronInteractions) {
+    if (interaction.channel == NeutronInteractionChannel::Inelastic) {
+      ++numInelastic;
+      if (interaction.isFiducialLAr) {
+        ++numInelasticSensitive;
+      }
+    } else if (interaction.channel == NeutronInteractionChannel::Elastic &&
+               interaction.isFiducialLAr) {
+      ++numElasticSensitive;
+      nucleusRecoilEnergy += interaction.preKineticEnergyKeV -
+                             interaction.postKineticEnergyKeV;
+    } else if (interaction.channel == NeutronInteractionChannel::Capture) {
+      nCapture = true;
+    }
+  }
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......

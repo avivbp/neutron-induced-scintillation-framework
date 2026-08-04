@@ -65,6 +65,13 @@ position, time, volume role, process and channel, neutron energy before and
 after the interaction, local energy deposit, and produced secondaries. Event
 summaries are derived from these records rather than replacing them.
 
+The implementation writes these records to
+`neutron_interactions_<config_id>.csv` without applying the optical-detection
+or TOF cuts used for the legacy event CSV. Secondary lists are encoded as
+`particle:PDG-code:kinetic-energy-keV` entries. Ordinary geometry crossings
+are omitted, while transportation out of the simulation world is retained as
+`transport_exit`.
+
 Energy deposition and scintillation must also be attributable to depositing
 particle classes. Inelastic events can mix nuclear recoils, secondary neutrons,
 gammas, electrons, protons, alphas, and heavier ions; total inelastic deposited

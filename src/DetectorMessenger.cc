@@ -43,6 +43,12 @@ DetectorMessenger::DetectorMessenger(DetectorConstruction* det, Run* run)
   fBoxSensorLayoutsCmd->SetParameterName("BoxSensorLayouts", false);
   fBoxSensorLayoutsCmd->AvailableForStates(G4State_PreInit);
 
+  fRunLabelCmd = new G4UIcmdWithAString("/det/setRunLabel", this);
+  fRunLabelCmd->SetGuidance(
+      "Set a stable label used in interaction-truth output filenames.");
+  fRunLabelCmd->SetParameterName("RunLabel", false);
+  fRunLabelCmd->AvailableForStates(G4State_PreInit, G4State_Idle);
+
   // Geometry and optical-material commands are intended to be used before /run/initialize.
   fInnerRadiusCmd = new G4UIcmdWithADouble("/det/setInnerRadiusCm", this);
   fInnerRadiusCmd->SetGuidance("Set inner LAr radius in cm.");
@@ -279,6 +285,7 @@ DetectorMessenger::~DetectorMessenger() {
   delete fBoxFiducialMarginCmd;
   delete fBoxCryostatThicknessCmd;
   delete fBoxSensorLayoutsCmd;
+  delete fRunLabelCmd;
   delete fInnerRadiusCmd;
   delete fInnerHeightCmd;
   delete fOuterDiameterCmd;
@@ -328,6 +335,8 @@ void DetectorMessenger::SetNewValue(G4UIcommand* command, G4String newValue) {
             fBoxCryostatThicknessCmd->GetNewDoubleValue(newValue));
     } else if (command == fBoxSensorLayoutsCmd) {
         fDetector->SetBoxSensorLayouts(newValue);
+    } else if (command == fRunLabelCmd) {
+        fDetector->SetRunLabel(newValue);
     } else if (command == fInnerRadiusCmd) {
         fDetector->SetInnerRadiusCm(fInnerRadiusCmd->GetNewDoubleValue(newValue));
     } else if (command == fInnerHeightCmd) {

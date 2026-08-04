@@ -399,6 +399,20 @@ TOF-window conditions pass. Important columns include:
 - `scatteredNotSensitive`
 - `InelasticSensitive`
 
+Every neutron interaction is also written independently of those event cuts to
+`neutron_interactions_<config_id>.csv`. This includes interactions by primary
+and secondary neutron tracks. The channel column uses `elastic`, `inelastic`,
+`capture`, `fission`, `other_hadronic`, `transport_exit`, or `unclassified`;
+the original Geant4 process name is retained alongside it.
+
+Each interaction row contains the event, interaction, track, parent, and step
+identifiers; physical volume and configured volume roles; position and time;
+neutron kinetic energy before and after the step; local energy deposit; and all
+secondaries created by the interaction. The `secondaries` field is a
+pipe-separated list of `particle:PDG-code:kinetic-energy-keV` entries. In
+multithreaded runs, rows from one event remain together, but event blocks can
+appear in completion order rather than numeric event order.
+
 ## Neutron scintillation correction
 
 For newly simulated data, gamma calibration enables this normalization:
