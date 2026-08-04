@@ -53,6 +53,7 @@
 #include <cctype>
 #include <cstdint>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 class G4Box;
@@ -90,6 +91,20 @@ private:
                                   10.0 * CLHEP::m};
   G4ThreeVector fBoxFiducialMargin;
   G4double fBoxCryostatThickness = 1.0 * CLHEP::cm;
+
+  struct BoxSensorLayoutConfig {
+    G4String id;
+    SensorType type = SensorType::SiPM;
+    std::vector<SensorSurface> faces;
+    G4double activeWidth = 0.0;
+    G4double activeHeight = 0.0;
+    G4double thickness = 0.0;
+    G4double pitchU = 0.0;
+    G4double pitchV = 0.0;
+    G4double edgeClearance = 0.0;
+    G4double inset = 0.0;
+  };
+  std::vector<BoxSensorLayoutConfig> fBoxSensorLayouts;
 
   // ------------------ Config knobs (set by messenger) ------------------
   G4int    fTopPMTs   = 0;     // 0..4 active tiles
@@ -140,6 +155,9 @@ private:
   std::vector<G4VPhysicalVolume*> fSiPM_PV;
   std::vector<G4OpticalSurface*>  fSiPM_Surf;
   std::vector<int>                fSiPM_RowOfTile;
+
+  std::vector<G4VPhysicalVolume*> fBoxSensor_PV;
+  std::vector<std::pair<G4OpticalSurface*, SensorType>> fBoxSensor_Surf;
 
   G4int fSiPM_TilesPerRow = 0; // computed
 
@@ -192,6 +210,7 @@ public:
   void SetBoxDimensionsCm(const G4String& dimensions);
   void SetBoxFiducialMarginCm(const G4String& margins);
   void SetBoxCryostatThicknessCm(G4double thickness);
+  void SetBoxSensorLayouts(const G4String& layouts);
   DetectorModel GetDetectorModel() const { return fDetectorModel; }
 
   void RegisterVolumeRole(const G4LogicalVolume* volume, VolumeRole role);
@@ -544,6 +563,8 @@ private:
   void ComputeGeomParameters();
   void ChangeGeometry();
   G4VPhysicalVolume* ConstructBoxCryostat();
+  void BuildBoxSensorLayouts(G4LogicalVolume* activeLogic,
+                             G4VPhysicalVolume* activePhys);
 
   G4Material*        Al;
   G4Material*        noScintMaterial;

@@ -46,6 +46,11 @@ if(BUILD_TESTING)
                  src/SensorPlacement.cc)
   target_link_libraries(SensorPlacementTest ${Geant4_LIBRARIES})
   add_test(NAME SensorPlacementTest COMMAND SensorPlacementTest)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME ConfigToolsTest
+           COMMAND ${Python3_EXECUTABLE} tests/test_config_tools.py)
+  set_tests_properties(ConfigToolsTest PROPERTIES
+                       WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 endif()
 
 

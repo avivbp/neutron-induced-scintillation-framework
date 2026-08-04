@@ -567,6 +567,88 @@ void DetectorConstruction::SetBoxCryostatThicknessCm(G4double thickness)
   fBoxCryostatThickness = thickness * CLHEP::cm;
 }
 
+void DetectorConstruction::SetBoxSensorLayouts(const G4String& layouts)
+{
+  fBoxSensorLayouts.clear();
+  if (layouts.empty() || ToLower(layouts) == "none") {
+    return;
+  }
+
+  auto parseFace = [](const G4String& value, SensorSurface& face) {
+    if (value == "+x") face = SensorSurface::BoxPositiveX;
+    else if (value == "-x") face = SensorSurface::BoxNegativeX;
+    else if (value == "+y") face = SensorSurface::BoxPositiveY;
+    else if (value == "-y") face = SensorSurface::BoxNegativeY;
+    else if (value == "+z") face = SensorSurface::BoxPositiveZ;
+    else if (value == "-z") face = SensorSurface::BoxNegativeZ;
+    else return false;
+    return true;
+  };
+
+  std::stringstream layoutStream(layouts);
+  std::string encodedLayout;
+  while (std::getline(layoutStream, encodedLayout, ';')) {
+    std::vector<std::string> fields;
+    std::stringstream fieldStream(encodedLayout);
+    std::string field;
+    while (std::getline(fieldStream, field, ':')) {
+      fields.push_back(field);
+    }
+    if (fields.size() != 10) {
+      G4Exception("DetectorConstruction::SetBoxSensorLayouts", "InvalidBoxLayout",
+                  FatalException,
+                  ("Box sensor layout needs 10 fields: " + encodedLayout).c_str());
+      return;
+    }
+
+    BoxSensorLayoutConfig config;
+    config.id = fields[0];
+    const auto type = ToLower(fields[1]);
+    if (type == "pmt") config.type = SensorType::PMT;
+    else if (type == "sipm") config.type = SensorType::SiPM;
+    else {
+      G4Exception("DetectorConstruction::SetBoxSensorLayouts", "InvalidSensorType",
+                  FatalException,
+                  ("Unknown box sensor type: " + fields[1]).c_str());
+      return;
+    }
+
+    std::stringstream faceStream(fields[2]);
+    std::string encodedFace;
+    while (std::getline(faceStream, encodedFace, '|')) {
+      SensorSurface faceValue = SensorSurface::Explicit;
+      if (!parseFace(encodedFace, faceValue)) {
+        G4Exception("DetectorConstruction::SetBoxSensorLayouts", "InvalidBoxFace",
+                    FatalException,
+                    ("Unknown box sensor face: " + encodedFace).c_str());
+        return;
+      }
+      config.faces.push_back(faceValue);
+    }
+    if (config.id.empty() || config.faces.empty()) {
+      G4Exception("DetectorConstruction::SetBoxSensorLayouts", "EmptyBoxLayout",
+                  FatalException, "Box sensor layout ID and faces must not be empty.");
+      return;
+    }
+
+    try {
+      config.activeWidth = std::stod(fields[3]) * CLHEP::cm;
+      config.activeHeight = std::stod(fields[4]) * CLHEP::cm;
+      config.thickness = std::stod(fields[5]) * CLHEP::cm;
+      config.pitchU = std::stod(fields[6]) * CLHEP::cm;
+      config.pitchV = std::stod(fields[7]) * CLHEP::cm;
+      config.edgeClearance = std::stod(fields[8]) * CLHEP::cm;
+      config.inset = std::stod(fields[9]) * CLHEP::cm;
+    } catch (const std::exception&) {
+      G4Exception("DetectorConstruction::SetBoxSensorLayouts", "InvalidBoxLayoutNumber",
+                  FatalException,
+                  ("Invalid numeric box sensor field: " + encodedLayout).c_str());
+      return;
+    }
+    fBoxSensorLayouts.push_back(config);
+  }
+}
+
 void DetectorConstruction::RegisterVolumeRole(const G4LogicalVolume* volume,
                                               VolumeRole role)
 {
@@ -1318,11 +1400,108 @@ G4VPhysicalVolume* DetectorConstruction::ConstructBoxCryostat()
   innerCellLogic = activeLogic;
   innerCellPhysi = activePhys;
 
+  BuildBoxSensorLayouts(activeLogic, activePhys);
+  ApplySensorConfig();
+
   G4cout << "[Geometry] Built box cryostat with active LAr dimensions "
          << fBoxDimensions / CLHEP::cm << " cm, fiducial margins "
          << fBoxFiducialMargin / CLHEP::cm << " cm, and shell thickness "
          << fBoxCryostatThickness / CLHEP::cm << " cm." << G4endl;
   return fPhysiWorld;
+}
+
+void DetectorConstruction::BuildBoxSensorLayouts(
+    G4LogicalVolume* activeLogic, G4VPhysicalVolume* activePhys)
+{
+  fBoxSensor_PV.clear();
+  fBoxSensor_Surf.clear();
+  auto dummyMaterial = G4NistManager::Instance()->FindOrBuildMaterial(
+      "G4_Galactic");
+
+  for (const auto& layout : fBoxSensorLayouts) {
+    const auto requiredDepth = layout.inset + layout.thickness;
+    for (const auto face : layout.faces) {
+      G4double fiducialMargin = 0.0;
+      if (face == SensorSurface::BoxPositiveX ||
+          face == SensorSurface::BoxNegativeX) {
+        fiducialMargin = fBoxFiducialMargin.x();
+      } else if (face == SensorSurface::BoxPositiveY ||
+                 face == SensorSurface::BoxNegativeY) {
+        fiducialMargin = fBoxFiducialMargin.y();
+      } else {
+        fiducialMargin = fBoxFiducialMargin.z();
+      }
+      if (fBoxFiducialMargin.mag2() > 0.0 && fiducialMargin < requiredDepth) {
+        const auto message = "Fiducial margin is too small for box sensor layout " +
+                             layout.id;
+        G4Exception("DetectorConstruction::BuildBoxSensorLayouts",
+                    "BoxSensorFiducialOverlap", FatalException,
+                    message.c_str());
+      }
+    }
+
+    auto solid = new G4Box(
+        (layout.id + "_solid").c_str(), 0.5 * layout.activeWidth,
+        0.5 * layout.activeHeight, 0.5 * layout.thickness);
+    auto logic = new G4LogicalVolume(solid, dummyMaterial,
+                                     (layout.id + "_logic").c_str());
+    RegisterVolumeRole(logic, VolumeRole::OpticalDetector);
+
+    auto sensorVis = new G4VisAttributes(
+        layout.type == SensorType::PMT ? G4Colour(0.2, 0.8, 0.2)
+                                       : G4Colour(0.9, 0.9, 0.2));
+    sensorVis->SetForceSolid(true);
+    logic->SetVisAttributes(sensorVis);
+    fVisAttributes.push_back(sensorVis);
+
+    G4int layoutCopyNumber = 0;
+    for (const auto face : layout.faces) {
+      BoxFaceGridConfig grid;
+      grid.group = layout.id;
+      grid.physicalVolumeName = layout.id + "_pv";
+      grid.type = layout.type;
+      grid.face = face;
+      grid.boxDimensions = fBoxDimensions;
+      grid.activeWidth = layout.activeWidth;
+      grid.activeHeight = layout.activeHeight;
+      grid.thickness = layout.thickness;
+      grid.pitchU = layout.pitchU;
+      grid.pitchV = layout.pitchV;
+      grid.edgeClearance = layout.edgeClearance;
+      grid.inset = layout.inset;
+      grid.hostLogicalVolume = activeLogic;
+      grid.hostPhysicalVolume = activePhys;
+
+      const auto placements = GenerateBoxFaceGridPlacements(grid);
+      for (const auto& placement : placements) {
+        // SensorPlacement stores local sensor axes expressed in host-volume
+        // coordinates. G4PVPlacement takes the inverse frame transform.
+        auto rotation = new G4RotationMatrix(placement.rotation.inverse());
+        auto physical = new G4PVPlacement(
+            rotation, placement.position, logic, placement.physicalVolumeName,
+            activeLogic, false, layoutCopyNumber, false);
+        auto surface = new G4OpticalSurface(
+            ((layout.type == SensorType::PMT ? "PMT_" : "SiPM_") +
+             layout.id + "_" + std::to_string(layoutCopyNumber)).c_str());
+        surface->SetType(dielectric_metal);
+        surface->SetModel(unified);
+        surface->SetFinish(polished);
+        surface->SetMaterialPropertiesTable(MakeESRMPT());
+
+        const auto suffix = layout.id + "_" +
+                            std::to_string(layoutCopyNumber);
+        new G4LogicalBorderSurface(("LAr_to_" + suffix).c_str(), activePhys,
+                                   physical, surface);
+        new G4LogicalBorderSurface((suffix + "_to_LAr").c_str(), physical,
+                                   activePhys, surface);
+        fBoxSensor_PV.push_back(physical);
+        fBoxSensor_Surf.emplace_back(surface, layout.type);
+        ++layoutCopyNumber;
+      }
+    }
+    G4cout << "[Sensors] Built " << layoutCopyNumber << " tiles for box layout "
+           << layout.id << G4endl;
+  }
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -2148,10 +2327,10 @@ void DetectorConstruction::ApplySensorConfig()
     const bool topOn = (i < fTopPMTs);
     const bool botOn = (i < fBotPMTs);
 
-    if (fTopPMT_Surf[i]) {
+    if (i < static_cast<int>(fTopPMT_Surf.size()) && fTopPMT_Surf[i]) {
       fTopPMT_Surf[i]->SetMaterialPropertiesTable(topOn ? fMPT_TopPMT_Active : fMPT_ESR);
     }
-    if (fBotPMT_Surf[i]) {
+    if (i < static_cast<int>(fBotPMT_Surf.size()) && fBotPMT_Surf[i]) {
       fBotPMT_Surf[i]->SetMaterialPropertiesTable(botOn ? fMPT_BotPMT_Active : fMPT_ESR);
     }
   }
@@ -2165,6 +2344,13 @@ void DetectorConstruction::ApplySensorConfig()
 
     if (fSiPM_Surf[k]) {
       fSiPM_Surf[k]->SetMaterialPropertiesTable(on ? fMPT_SiPM_Active : fMPT_ESR);
+    }
+  }
+
+  for (const auto& [surface, type] : fBoxSensor_Surf) {
+    if (surface) {
+      surface->SetMaterialPropertiesTable(
+          type == SensorType::PMT ? fMPT_TopPMT_Active : fMPT_SiPM_Active);
     }
   }
 

@@ -11,6 +11,11 @@
 # These must be set before /run/initialize because they affect constructed
 # geometry/material tables.
 # ---------------------------------------------------------------------------
+/det/setDetectorModel {{detector_model}}
+/det/setBoxDimensionsCm {{box_dimensions_cm}}
+/det/setBoxFiducialMarginCm {{box_fiducial_margin_cm}}
+/det/setBoxCryostatThicknessCm {{box_cryostat_thickness_cm}}
+/det/setBoxSensorLayouts {{box_sensor_layouts}}
 /det/setInnerRadiusCm {{inner_lar_radius_cm}}
 /det/setInnerHeightCm {{inner_lar_height_cm}}
 /det/setOuterDiameterCm {{outer_lar_diameter_cm}}

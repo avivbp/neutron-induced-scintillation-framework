@@ -47,6 +47,7 @@ private:
     G4UIcmdWithAString* fBoxDimensionsCmd    = nullptr;
     G4UIcmdWithAString* fBoxFiducialMarginCmd = nullptr;
     G4UIcmdWithADouble* fBoxCryostatThicknessCmd = nullptr;
+    G4UIcmdWithAString* fBoxSensorLayoutsCmd = nullptr;
 
     G4UIcmdWithADouble* fInnerRadiusCmd      = nullptr;
     G4UIcmdWithADouble* fInnerHeightCmd      = nullptr;

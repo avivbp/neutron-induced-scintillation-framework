@@ -343,7 +343,13 @@ std::cout << "after 2B)" << std::endl;
   if (checkByHand){
   if(particleDef == opticalphoton){
 
-            if(creator && creator->GetProcessName() == "OpWLS" && post->GetStepStatus() == fGeomBoundary){
+            const G4bool acceptsDirectPhotons =
+                fDetector->GetDetectorModel() ==
+                DetectorConstruction::DetectorModel::BoxCryostat;
+            const G4bool isWavelengthShifted =
+                creator && creator->GetProcessName() == "OpWLS";
+            if ((acceptsDirectPhotons || isWavelengthShifted) &&
+                post->GetStepStatus() == fGeomBoundary){
 
             auto boundary = GetBoundaryProc();
             if (boundary) {

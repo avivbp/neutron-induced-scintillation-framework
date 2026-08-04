@@ -6,6 +6,12 @@
 /event/verbose 0
 /tracking/verbose 0
 
+/det/setDetectorModel {{detector_model}}
+/det/setBoxDimensionsCm {{box_dimensions_cm}}
+/det/setBoxFiducialMarginCm {{box_fiducial_margin_cm}}
+/det/setBoxCryostatThicknessCm {{box_cryostat_thickness_cm}}
+# Gamma calibration counts produced photons and deliberately builds no sensors.
+/det/setBoxSensorLayouts none
 /det/setInnerRadiusCm {{inner_lar_radius_cm}}
 /det/setInnerHeightCm {{inner_lar_height_cm}}
 /det/setOuterDiameterCm {{outer_lar_diameter_cm}}

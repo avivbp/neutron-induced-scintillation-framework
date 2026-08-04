@@ -77,7 +77,7 @@ def neutron_detector_macro_value(config: Mapping[str, Any]) -> str:
         angle = float(detector["angle_deg"])
         distance = float(detector["distance_cm"])
         entries.append(f"{label}:{angle:g}:{distance:g}")
-    return ";".join(entries)
+    return ";".join(entries) if entries else "none"
 
 
 def tof_window_macro_value(config: Mapping[str, Any]) -> str:
@@ -86,6 +86,118 @@ def tof_window_macro_value(config: Mapping[str, Any]) -> str:
         raise ValueError("selection.tof_window_ns must contain exactly two values.")
     lo, hi = float(window[0]), float(window[1])
     return f"{lo:g} {hi:g}"
+
+
+def _three_values(value: Any, key: str) -> tuple[float, float, float]:
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        raise ValueError(f"{key} must contain exactly three values.")
+    return float(value[0]), float(value[1]), float(value[2])
+
+
+def _two_values(value: Any, key: str) -> tuple[float, float]:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise ValueError(f"{key} must contain exactly two values.")
+    return float(value[0]), float(value[1])
+
+
+def box_sensor_layout_macro_value(config: Mapping[str, Any]) -> str:
+    layouts = deep_get(config, "sensors.layouts", [])
+    if layouts is None or layouts == []:
+        return "none"
+    if not isinstance(layouts, list):
+        raise ValueError("sensors.layouts must be a list.")
+    if str(deep_get(config, "detector.model", "nested_cell")).lower() != "box_cryostat":
+        raise ValueError("sensors.layouts is currently supported only by box_cryostat.")
+
+    margins = _three_values(
+        deep_get(config, "geometry.fiducial.margin_cm", [0.0, 0.0, 0.0]),
+        "geometry.fiducial.margin_cm",
+    )
+    has_inset_fiducial = any(margin > 0.0 for margin in margins)
+
+    valid_faces = {"+x", "-x", "+y", "-y", "+z", "-z"}
+    entries: list[str] = []
+    for index, layout in enumerate(layouts):
+        if not isinstance(layout, Mapping):
+            raise ValueError("Each sensors.layouts entry must be a mapping.")
+        layout_id = str(layout.get("id", f"layout_{index}"))
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", layout_id):
+            raise ValueError(
+                f"Sensor layout id {layout_id!r} may contain only letters, numbers, _ and -."
+            )
+        sensor_type = str(layout.get("type", "sipm")).lower()
+        if sensor_type not in {"pmt", "sipm"}:
+            raise ValueError(f"Sensor layout {layout_id}: type must be pmt or sipm.")
+        if str(layout.get("pattern", "grid")).lower() != "grid":
+            raise ValueError(f"Sensor layout {layout_id}: only pattern: grid is supported.")
+
+        faces = layout.get("faces", layout.get("face", []))
+        if isinstance(faces, str):
+            faces = [faces]
+        if not isinstance(faces, list) or not faces:
+            raise ValueError(f"Sensor layout {layout_id}: faces must be a non-empty list.")
+        normalized_faces = [str(face).lower() for face in faces]
+        unknown = set(normalized_faces) - valid_faces
+        if unknown:
+            raise ValueError(f"Sensor layout {layout_id}: unknown faces {sorted(unknown)}.")
+        if len(set(normalized_faces)) != len(normalized_faces):
+            raise ValueError(f"Sensor layout {layout_id}: faces must not be repeated.")
+
+        if sensor_type == "pmt":
+            default_side = float(deep_get(config, "sensors.pmt.side_length_cm", 2.54))
+            default_size = deep_get(
+                config, "sensors.pmt.active_size_cm", [default_side, default_side]
+            )
+        else:
+            default_side = float(deep_get(config, "sensors.sipm.tile_size_cm", 0.6))
+            default_size = deep_get(
+                config, "sensors.sipm.active_size_cm", [default_side, default_side]
+            )
+        width, height = _two_values(
+            layout.get("active_size_cm", default_size),
+            f"sensors.layouts[{index}].active_size_cm",
+        )
+        pitch_u, pitch_v = _two_values(
+            layout.get("pitch_cm"), f"sensors.layouts[{index}].pitch_cm"
+        )
+        thickness = float(layout.get("thickness_cm", 0.01))
+        clearance = float(layout.get("edge_clearance_cm", 0.0))
+        inset = float(layout.get("inset_cm", 0.001))
+        if min(width, height, thickness, pitch_u, pitch_v) <= 0.0:
+            raise ValueError(f"Sensor layout {layout_id}: sizes and pitches must be positive.")
+        if pitch_u < width or pitch_v < height:
+            raise ValueError(
+                f"Sensor layout {layout_id}: pitch must be at least active_size_cm."
+            )
+        if clearance < 0.0 or inset < 0.0:
+            raise ValueError(
+                f"Sensor layout {layout_id}: clearance and inset must be non-negative."
+            )
+        if has_inset_fiducial:
+            face_axes = {"+x": 0, "-x": 0, "+y": 1, "-y": 1, "+z": 2, "-z": 2}
+            for face in normalized_faces:
+                if margins[face_axes[face]] < inset + thickness:
+                    raise ValueError(
+                        f"Sensor layout {layout_id}: fiducial margin on {face} "
+                        "must be at least thickness_cm + inset_cm."
+                    )
+        entries.append(
+            ":".join(
+                [
+                    layout_id,
+                    sensor_type,
+                    "|".join(normalized_faces),
+                    f"{width:g}",
+                    f"{height:g}",
+                    f"{thickness:g}",
+                    f"{pitch_u:g}",
+                    f"{pitch_v:g}",
+                    f"{clearance:g}",
+                    f"{inset:g}",
+                ]
+            )
+        )
+    return ";".join(entries)
 
 
 def flatten_for_template(config: Mapping[str, Any], row: Mapping[str, Any]) -> Dict[str, Any]:
@@ -106,6 +218,30 @@ def flatten_for_template(config: Mapping[str, Any], row: Mapping[str, Any]) -> D
     pmt_pde = float(deep_get(config, "sensors.pmt.pde", 0.266))
     pmt_top_pde = float(deep_get(config, "sensors.pmt.top_pde", pmt_pde))
     pmt_bottom_pde = float(deep_get(config, "sensors.pmt.bottom_pde", pmt_top_pde))
+    detector_model = str(deep_get(config, "detector.model", "nested_cell")).lower()
+    if detector_model not in {"nested_cell", "box_cryostat"}:
+        raise ValueError("detector.model must be nested_cell or box_cryostat.")
+    box_dimensions = _three_values(
+        deep_get(config, "geometry.active_lar.dimensions_cm", [400.0, 400.0, 1000.0]),
+        "geometry.active_lar.dimensions_cm",
+    )
+    box_fiducial_margin = _three_values(
+        deep_get(config, "geometry.fiducial.margin_cm", [0.0, 0.0, 0.0]),
+        "geometry.fiducial.margin_cm",
+    )
+    if min(box_dimensions) <= 0.0:
+        raise ValueError("geometry.active_lar.dimensions_cm must be positive.")
+    if min(box_fiducial_margin) < 0.0:
+        raise ValueError("geometry.fiducial.margin_cm must be non-negative.")
+    if any(2.0 * margin >= dimension for margin, dimension in zip(
+        box_fiducial_margin, box_dimensions
+    )):
+        raise ValueError("geometry.fiducial.margin_cm leaves no fiducial volume.")
+    box_cryostat_thickness = float(
+        deep_get(config, "geometry.cryostat.thickness_cm", 1.0)
+    )
+    if box_cryostat_thickness <= 0.0:
+        raise ValueError("geometry.cryostat.thickness_cm must be positive.")
 
     values: Dict[str, Any] = {
         "config_id": row.get("config_id", "config"),
@@ -116,6 +252,13 @@ def flatten_for_template(config: Mapping[str, Any], row: Mapping[str, Any]) -> D
         "n_events": int(deep_get(config, "run.n_events", 1000)),
 
         # Geometry
+        "detector_model": detector_model,
+        "box_dimensions_cm": " ".join(f"{value:g}" for value in box_dimensions),
+        "box_fiducial_margin_cm": " ".join(
+            f"{value:g}" for value in box_fiducial_margin
+        ),
+        "box_cryostat_thickness_cm": box_cryostat_thickness,
+        "box_sensor_layouts": box_sensor_layout_macro_value(config),
         "inner_lar_radius_cm": inner_r,
         "inner_lar_height_cm": inner_h,
         "inner_diameter_cm": 2.0 * inner_r,
@@ -172,6 +315,60 @@ def coverage_metrics(config: Mapping[str, Any], values: Mapping[str, Any]) -> Di
     """Compute approximate optical coverage from the same geometric convention used
     in the thesis analysis: top+bottom circular faces plus cylindrical side area.
     """
+    if str(deep_get(config, "detector.model", "nested_cell")).lower() == "box_cryostat":
+        dimensions = _three_values(
+            deep_get(config, "geometry.active_lar.dimensions_cm"),
+            "geometry.active_lar.dimensions_cm",
+        )
+        face_extents = {
+            "+x": (dimensions[1], dimensions[2]),
+            "-x": (dimensions[1], dimensions[2]),
+            "+y": (dimensions[0], dimensions[2]),
+            "-y": (dimensions[0], dimensions[2]),
+            "+z": (dimensions[0], dimensions[1]),
+            "-z": (dimensions[0], dimensions[1]),
+        }
+        active_area = 0.0
+        instrumented_faces: set[str] = set()
+        for layout in deep_get(config, "sensors.layouts", []):
+            faces = layout.get("faces", layout.get("face", []))
+            if isinstance(faces, str):
+                faces = [faces]
+            sensor_type = str(layout.get("type", "sipm")).lower()
+            default_side = float(deep_get(
+                config,
+                "sensors.pmt.side_length_cm" if sensor_type == "pmt" else "sensors.sipm.tile_size_cm",
+                2.54 if sensor_type == "pmt" else 0.6,
+            ))
+            width, height = _two_values(
+                layout.get("active_size_cm", [default_side, default_side]),
+                "sensor active_size_cm",
+            )
+            pitch_u, pitch_v = _two_values(layout.get("pitch_cm"), "sensor pitch_cm")
+            clearance = float(layout.get("edge_clearance_cm", 0.0))
+            for face in faces:
+                face = str(face).lower()
+                extent_u, extent_v = face_extents[face]
+                usable_u = extent_u - 2.0 * clearance
+                usable_v = extent_v - 2.0 * clearance
+                if width > usable_u or height > usable_v:
+                    continue
+                count_u = math.floor((usable_u - width) / pitch_u) + 1
+                count_v = math.floor((usable_v - height) / pitch_v) + 1
+                active_area += count_u * count_v * width * height
+                instrumented_faces.add(face)
+        total_area = sum(
+            face_extents[face][0] * face_extents[face][1]
+            for face in instrumented_faces
+        )
+        return {
+            "tiles_per_sipm_ring": 0.0,
+            "active_area_cm2": active_area,
+            "total_inner_surface_cm2": total_area,
+            "coverage_fraction": active_area / total_area if total_area else 0.0,
+            "coverage_percent": 100.0 * active_area / total_area if total_area else 0.0,
+        }
+
     radius = float(deep_get(config, "geometry.inner_lar.radius_cm", 5.0))
     height = float(deep_get(config, "geometry.inner_lar.height_cm", 10.0))
     pmt_side = float(deep_get(config, "sensors.pmt.side_length_cm", 2.54))
