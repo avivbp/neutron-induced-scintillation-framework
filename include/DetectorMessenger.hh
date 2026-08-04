@@ -43,6 +43,10 @@ private:
     G4UIcmdWithAString* fSiPMResponseModeCmd = nullptr;
     G4UIcmdWithAString* fPMTCurveFileCmd     = nullptr;
     G4UIcmdWithAString* fSiPMCurveFileCmd    = nullptr;
+    G4UIcmdWithAString* fDetectorModelCmd    = nullptr;
+    G4UIcmdWithAString* fBoxDimensionsCmd    = nullptr;
+    G4UIcmdWithAString* fBoxFiducialMarginCmd = nullptr;
+    G4UIcmdWithADouble* fBoxCryostatThicknessCmd = nullptr;
 
     G4UIcmdWithADouble* fInnerRadiusCmd      = nullptr;
     G4UIcmdWithADouble* fInnerHeightCmd      = nullptr;

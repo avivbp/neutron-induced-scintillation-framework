@@ -68,6 +68,11 @@ class G4GlobalMagFieldMessenger;
 class DetectorConstruction : public G4VUserDetectorConstruction
 {
 public:
+  enum class DetectorModel {
+    NestedCell,
+    BoxCryostat,
+  };
+
   enum class VolumeRole : std::uint32_t {
     ActiveLAr       = 1u << 0,
     FiducialLAr     = 1u << 1,
@@ -79,6 +84,12 @@ public:
 
 private:
   std::unordered_map<const G4LogicalVolume*, std::uint32_t> fVolumeRoles;
+
+  DetectorModel fDetectorModel = DetectorModel::NestedCell;
+  G4ThreeVector fBoxDimensions = {4.0 * CLHEP::m, 4.0 * CLHEP::m,
+                                  10.0 * CLHEP::m};
+  G4ThreeVector fBoxFiducialMargin;
+  G4double fBoxCryostatThickness = 1.0 * CLHEP::cm;
 
   // ------------------ Config knobs (set by messenger) ------------------
   G4int    fTopPMTs   = 0;     // 0..4 active tiles
@@ -177,6 +188,12 @@ private:
   // ------------------ Build + apply methods ------------------
 
 public:
+  void SetDetectorModel(const G4String& model);
+  void SetBoxDimensionsCm(const G4String& dimensions);
+  void SetBoxFiducialMarginCm(const G4String& margins);
+  void SetBoxCryostatThicknessCm(G4double thickness);
+  DetectorModel GetDetectorModel() const { return fDetectorModel; }
+
   void RegisterVolumeRole(const G4LogicalVolume* volume, VolumeRole role);
   G4bool HasVolumeRole(const G4LogicalVolume* volume, VolumeRole role) const;
   G4bool IsActiveLAr(const G4LogicalVolume* volume) const {
@@ -526,6 +543,7 @@ private:
   void DefineMaterials();
   void ComputeGeomParameters();
   void ChangeGeometry();
+  G4VPhysicalVolume* ConstructBoxCryostat();
 
   G4Material*        Al;
   G4Material*        noScintMaterial;

@@ -35,6 +35,7 @@
 #include "Run.hh"
 #include "G4Material.hh"
 #include "G4Box.hh"
+#include "G4SubtractionSolid.hh"
 #include "G4LogicalVolume.hh"
 #include "G4UniformMagField.hh"
 #include "G4UnionSolid.hh"
@@ -502,6 +503,70 @@ DetectorConstruction::~DetectorConstruction()
   delete fDetectorMessenger;
 }
 
+void DetectorConstruction::SetDetectorModel(const G4String& model)
+{
+  const auto normalized = ToLower(model);
+  if (normalized == "nested_cell" || normalized == "cylinder") {
+    fDetectorModel = DetectorModel::NestedCell;
+  } else if (normalized == "box_cryostat" || normalized == "box") {
+    fDetectorModel = DetectorModel::BoxCryostat;
+  } else {
+    G4cerr << "Ignoring unknown detector model: " << model << G4endl;
+  }
+}
+
+namespace {
+
+G4bool ParseThreeLengthsCm(const G4String& value, G4ThreeVector& result)
+{
+  std::stringstream stream(value);
+  G4double x = 0.0;
+  G4double y = 0.0;
+  G4double z = 0.0;
+  if (!(stream >> x >> y >> z)) {
+    return false;
+  }
+  result = G4ThreeVector(x, y, z) * CLHEP::cm;
+  return true;
+}
+
+}  // namespace
+
+void DetectorConstruction::SetBoxDimensionsCm(const G4String& dimensions)
+{
+  G4ThreeVector parsed;
+  if (!ParseThreeLengthsCm(dimensions, parsed) || parsed.x() <= 0.0 ||
+      parsed.y() <= 0.0 || parsed.z() <= 0.0) {
+    G4cerr << "Ignoring invalid box dimensions: " << dimensions << G4endl;
+    return;
+  }
+  fBoxDimensions = parsed;
+  const G4double requiredWorldSize =
+      std::max({parsed.x(), parsed.y(), parsed.z()}) + 4.0 * CLHEP::m;
+  fWorldSizeX = fWorldSizeYZ = std::max(20.0 * CLHEP::m, requiredWorldSize);
+}
+
+void DetectorConstruction::SetBoxFiducialMarginCm(const G4String& margins)
+{
+  G4ThreeVector parsed;
+  if (!ParseThreeLengthsCm(margins, parsed) || parsed.x() < 0.0 ||
+      parsed.y() < 0.0 || parsed.z() < 0.0) {
+    G4cerr << "Ignoring invalid box fiducial margins: " << margins << G4endl;
+    return;
+  }
+  fBoxFiducialMargin = parsed;
+}
+
+void DetectorConstruction::SetBoxCryostatThicknessCm(G4double thickness)
+{
+  if (thickness <= 0.0) {
+    G4cerr << "Ignoring invalid box cryostat thickness: " << thickness
+           << " cm" << G4endl;
+    return;
+  }
+  fBoxCryostatThickness = thickness * CLHEP::cm;
+}
+
 void DetectorConstruction::RegisterVolumeRole(const G4LogicalVolume* volume,
                                               VolumeRole role)
 {
@@ -812,6 +877,10 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
                               fLogicWorld,                       //its mother  volume
                              false,                   //no boolean operation
                              0);
+
+  if (fDetectorModel == DetectorModel::BoxCryostat) {
+    return ConstructBoxCryostat();
+  }
 
 
  
@@ -1175,6 +1244,84 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
 
   //always return the physical World
   //
+  return fPhysiWorld;
+}
+
+G4VPhysicalVolume* DetectorConstruction::ConstructBoxCryostat()
+{
+  const auto half = 0.5 * fBoxDimensions;
+  const auto fiducialDimensions = fBoxDimensions - 2.0 * fBoxFiducialMargin;
+  if (fiducialDimensions.x() <= 0.0 || fiducialDimensions.y() <= 0.0 ||
+      fiducialDimensions.z() <= 0.0) {
+    G4Exception("DetectorConstruction::ConstructBoxCryostat", "InvalidBoxFiducial",
+                FatalException,
+                "Box fiducial margins leave no positive fiducial volume.");
+  }
+
+  auto activeSolid = new G4Box("activeLArBox", half.x(), half.y(), half.z());
+  auto activeLogic = new G4LogicalVolume(activeSolid, fAbsorberMaterial,
+                                         "activeLArBox");
+  auto activePhys = new G4PVPlacement(nullptr, {}, activeLogic,
+                                      "activeLArBox", airLogic, false, 0);
+  RegisterVolumeRole(activeLogic, VolumeRole::ActiveLAr);
+
+  const G4bool useInsetFiducial = fBoxFiducialMargin.mag2() > 0.0;
+  if (useInsetFiducial) {
+    const auto fidHalf = 0.5 * fiducialDimensions;
+    auto fidSolid = new G4Box("fiducialLArBox", fidHalf.x(), fidHalf.y(),
+                              fidHalf.z());
+    auto fidLogic = new G4LogicalVolume(fidSolid, fAbsorberMaterial,
+                                        "fiducialLArBox");
+    new G4PVPlacement(nullptr, {}, fidLogic, "fiducialLArBox", activeLogic,
+                      false, 0);
+    RegisterVolumeRole(fidLogic, VolumeRole::ActiveLAr);
+    RegisterVolumeRole(fidLogic, VolumeRole::FiducialLAr);
+
+    auto fiducialRegion = new G4Region("FiducialLArRegion");
+    fiducialRegion->AddRootLogicalVolume(fidLogic);
+  } else {
+    RegisterVolumeRole(activeLogic, VolumeRole::FiducialLAr);
+  }
+
+  const auto outerHalf = half + G4ThreeVector(fBoxCryostatThickness,
+                                               fBoxCryostatThickness,
+                                               fBoxCryostatThickness);
+  auto outerSolid = new G4Box("boxCryostatOuter", outerHalf.x(), outerHalf.y(),
+                              outerHalf.z());
+  auto shellSolid = new G4SubtractionSolid("boxCryostatShell", outerSolid,
+                                           activeSolid);
+  auto steel = G4NistManager::Instance()->FindOrBuildMaterial(
+      "G4_STAINLESS-STEEL");
+  auto shellLogic = new G4LogicalVolume(shellSolid, steel, "boxCryostatShell");
+  new G4PVPlacement(nullptr, {}, shellLogic, "boxCryostatShell", airLogic,
+                    false, 0);
+  RegisterVolumeRole(shellLogic, VolumeRole::Cryostat);
+
+  auto activeVis = new G4VisAttributes(G4Colour(0.4, 0.6, 0.9, 0.35));
+  activeVis->SetForceSolid(true);
+  activeLogic->SetVisAttributes(activeVis);
+  fVisAttributes.push_back(activeVis);
+
+  auto shellVis = new G4VisAttributes(G4Colour(0.7, 0.7, 0.7, 0.25));
+  shellVis->SetForceSolid(true);
+  shellLogic->SetVisAttributes(shellVis);
+  fVisAttributes.push_back(shellVis);
+
+  auto activeRegion = new G4Region("ActiveLArRegion");
+  activeRegion->AddRootLogicalVolume(activeLogic);
+  auto cryostatRegion = new G4Region("SteelRegion");
+  cryostatRegion->AddRootLogicalVolume(shellLogic);
+  auto airRegion = new G4Region("AirRegion");
+  airRegion->AddRootLogicalVolume(airLogic);
+
+  innerCellSolid = nullptr;
+  innerCellLogic = activeLogic;
+  innerCellPhysi = activePhys;
+
+  G4cout << "[Geometry] Built box cryostat with active LAr dimensions "
+         << fBoxDimensions / CLHEP::cm << " cm, fiducial margins "
+         << fBoxFiducialMargin / CLHEP::cm << " cm, and shell thickness "
+         << fBoxCryostatThickness / CLHEP::cm << " cm." << G4endl;
   return fPhysiWorld;
 }
 

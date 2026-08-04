@@ -619,7 +619,7 @@ std::cout << "after hmm2)" << std::endl;
 
       // Calculate neutron angle relative to the beam line as it enters the
       // configured fiducial LAr from cryostat material.
-      if (fDetector->HasVolumeRole(preLV, DetectorConstruction::VolumeRole::Cryostat) &&
+      if (!fDetector->IsFiducialLAr(preLV) &&
           fDetector->IsFiducialLAr(postLV) &&
           processName == "Transportation" && fEventAction->tZero == 10000){
           G4double incomingAngle = calcAngle(G4ThreeVector(1,0,0),initMomentum);

@@ -12,8 +12,30 @@ DetectorMessenger::DetectorMessenger(DetectorConstruction* det, Run* run)
     : G4UImessenger(), fDetector(det), fRun(run) {
 
 
-    fDetDir = new G4UIdirectory("/det/");
+  fDetDir = new G4UIdirectory("/det/");
   fDetDir->SetGuidance("Detector configuration");
+
+  fDetectorModelCmd = new G4UIcmdWithAString("/det/setDetectorModel", this);
+  fDetectorModelCmd->SetGuidance("Set detector model: nested_cell or box_cryostat.");
+  fDetectorModelCmd->SetParameterName("DetectorModel", false);
+  fDetectorModelCmd->AvailableForStates(G4State_PreInit);
+
+  fBoxDimensionsCmd = new G4UIcmdWithAString("/det/setBoxDimensionsCm", this);
+  fBoxDimensionsCmd->SetGuidance("Set full active-LAr box dimensions in cm: x y z.");
+  fBoxDimensionsCmd->SetParameterName("BoxDimensionsCm", false);
+  fBoxDimensionsCmd->AvailableForStates(G4State_PreInit);
+
+  fBoxFiducialMarginCmd = new G4UIcmdWithAString("/det/setBoxFiducialMarginCm", this);
+  fBoxFiducialMarginCmd->SetGuidance("Set inset fiducial margins in cm: x y z.");
+  fBoxFiducialMarginCmd->SetParameterName("BoxFiducialMarginCm", false);
+  fBoxFiducialMarginCmd->AvailableForStates(G4State_PreInit);
+
+  fBoxCryostatThicknessCmd = new G4UIcmdWithADouble(
+      "/det/setBoxCryostatThicknessCm", this);
+  fBoxCryostatThicknessCmd->SetGuidance("Set box cryostat shell thickness in cm.");
+  fBoxCryostatThicknessCmd->SetParameterName("BoxCryostatThicknessCm", false);
+  fBoxCryostatThicknessCmd->SetRange("BoxCryostatThicknessCm>0.");
+  fBoxCryostatThicknessCmd->AvailableForStates(G4State_PreInit);
 
   // Geometry and optical-material commands are intended to be used before /run/initialize.
   fInnerRadiusCmd = new G4UIcmdWithADouble("/det/setInnerRadiusCm", this);
@@ -246,6 +268,10 @@ DetectorMessenger::~DetectorMessenger() {
   delete fAbsLengthCmd;
   delete fTpbEficCmd;
   delete fDetSizeCmd;
+  delete fDetectorModelCmd;
+  delete fBoxDimensionsCmd;
+  delete fBoxFiducialMarginCmd;
+  delete fBoxCryostatThicknessCmd;
   delete fInnerRadiusCmd;
   delete fInnerHeightCmd;
   delete fOuterDiameterCmd;
@@ -284,7 +310,16 @@ DetectorMessenger::~DetectorMessenger() {
 }
 
 void DetectorMessenger::SetNewValue(G4UIcommand* command, G4String newValue) {
-    if (command == fInnerRadiusCmd) {
+    if (command == fDetectorModelCmd) {
+        fDetector->SetDetectorModel(newValue);
+    } else if (command == fBoxDimensionsCmd) {
+        fDetector->SetBoxDimensionsCm(newValue);
+    } else if (command == fBoxFiducialMarginCmd) {
+        fDetector->SetBoxFiducialMarginCm(newValue);
+    } else if (command == fBoxCryostatThicknessCmd) {
+        fDetector->SetBoxCryostatThicknessCm(
+            fBoxCryostatThicknessCmd->GetNewDoubleValue(newValue));
+    } else if (command == fInnerRadiusCmd) {
         fDetector->SetInnerRadiusCm(fInnerRadiusCmd->GetNewDoubleValue(newValue));
     } else if (command == fInnerHeightCmd) {
         fDetector->SetInnerHeightCm(fInnerHeightCmd->GetNewDoubleValue(newValue));
