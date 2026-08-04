@@ -1678,35 +1678,118 @@ void DetectorConstruction::ChangeGeometry()
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
+std::vector<SensorPlacement>
+DetectorConstruction::GenerateLegacyCylinderPMTPlacements() const
+{
+  const G4double tile = fPMTSide;
+  const G4double half = 0.5 * tile;
+  const G4double thickness = 0.1 * mm;
+  const G4double inset = 0.01 * mm;
+  const G4double radius = 0.5 * innerDiameter;
+
+  if (tile > 2.0 * radius) {
+    G4cout << "[PMT] ERROR: PMT tile bigger than diameter.\n";
+    return {};
+  }
+
+  const G4double zTop = 0.5 * innerHeight - 0.5 * thickness - inset;
+  const G4double zBottom = -0.5 * innerHeight + 0.5 * thickness + inset;
+  const std::vector<G4ThreeVector> centers = {
+      {+half, +half, 0.0}, {+half, -half, 0.0},
+      {-half, +half, 0.0}, {-half, -half, 0.0},
+  };
+
+  std::vector<SensorPlacement> placements;
+  placements.reserve(2 * centers.size());
+  for (G4int index = 0; index < static_cast<G4int>(centers.size()); ++index) {
+    for (const auto top : {true, false}) {
+      SensorPlacement placement;
+      placement.id = G4String(top ? "top_pmt_" : "bottom_pmt_") +
+                     std::to_string(index);
+      placement.group = top ? "top_pmts" : "bottom_pmts";
+      placement.physicalVolumeName = top ? "PMTtileTopPV" : "PMTtileBotPV";
+      placement.type = SensorType::PMT;
+      placement.surface = top ? SensorSurface::CylinderTop
+                              : SensorSurface::CylinderBottom;
+      placement.hostLogicalVolume = innerCellLogic;
+      placement.hostPhysicalVolume = innerCellPhysi;
+      placement.position = centers[index] +
+          G4ThreeVector(0.0, 0.0, top ? zTop : zBottom);
+      placement.activeWidth = tile;
+      placement.activeHeight = tile;
+      placement.thickness = thickness;
+      placement.groupIndex = index;
+      placement.copyNumber = index;
+      placements.push_back(placement);
+    }
+  }
+
+  return placements;
+}
+
+std::vector<SensorPlacement>
+DetectorConstruction::GenerateCylinderSiPMPlacements() const
+{
+  const G4double tile = fSiPMTile;
+  const G4double thickness = 0.1 * mm;
+  const G4double inset = 0.01 * mm;
+  const G4double radius = 0.5 * innerDiameter;
+  const G4double height = innerHeight;
+  const G4int rowCount = static_cast<G4int>(std::floor(height / tile));
+  const G4int tilesPerRow = static_cast<G4int>(
+      std::floor(2.0 * CLHEP::pi * radius / tile));
+
+  if (rowCount <= 0 || tilesPerRow <= 0) {
+    G4cout << "[SiPM] ERROR: SiPM tile does not fit cylinder surface.\n";
+    return {};
+  }
+
+  std::vector<SensorPlacement> placements;
+  placements.reserve(rowCount * tilesPerRow);
+  const G4double deltaPhi = 2.0 * CLHEP::pi / tilesPerRow;
+
+  for (G4int row = 0; row < rowCount; ++row) {
+    const G4double z = -0.5 * height + (row + 0.5) * tile;
+    for (G4int column = 0; column < tilesPerRow; ++column) {
+      const G4double phi = column * deltaPhi;
+      const G4double radialPosition = radius - inset - 0.5 * thickness;
+      const G4int copyNumber = row * tilesPerRow + column;
+
+      SensorPlacement placement;
+      placement.id = G4String("barrel_sipm_") + std::to_string(copyNumber);
+      placement.group = "barrel_sipms";
+      placement.physicalVolumeName = "SiPMtilePV";
+      placement.type = SensorType::SiPM;
+      placement.surface = SensorSurface::CylinderBarrel;
+      placement.hostLogicalVolume = innerCellLogic;
+      placement.hostPhysicalVolume = innerCellPhysi;
+      placement.position = G4ThreeVector(
+          radialPosition * std::cos(-phi),
+          radialPosition * std::sin(-phi), z);
+      placement.rotation.rotateZ(phi);
+      placement.rotation.rotateY(90.0 * deg);
+      placement.hasRotation = true;
+      placement.activeWidth = tile;
+      placement.activeHeight = tile;
+      placement.thickness = thickness;
+      placement.groupIndex = row;
+      placement.copyNumber = copyNumber;
+      placements.push_back(placement);
+    }
+  }
+
+  return placements;
+}
+
+//....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
+
 void DetectorConstruction::BuildPMTPatches()
 {
-  // --- geometry numbers ---
   const G4double tile = fPMTSide;
   const G4double half = 0.5*tile;
   const G4double thick = 0.1*mm;  // thin patch
-  const G4double eps   = 0.01*mm;  // inset into LAr so it's inside the cell
-
-  const G4double R = 0.5*innerDiameter;
-  const G4double H = innerHeight;
-
-  // sanity: tiles must fit
-  if (tile > 2*R) {
-    G4cout << "[PMT] ERROR: PMT tile bigger than diameter.\n";
-    return;
-  }
-
-  const G4double zTop = +0.5*H - 0.5*thick - eps;
-  const G4double zBot = -0.5*H + 0.5*thick + eps;
-
-  // gap between tiles (optional)
-  const G4double gap = 0.0*mm;
-  const G4double dx = half + 0.5*gap;
-  const G4double dy = half + 0.5*gap;
-
-  // 2x2 centers
-  std::vector<G4ThreeVector> centers = {
-    {+dx,+dy,0}, {+dx,-dy,0}, {-dx,+dy,0}, {-dx,-dy,0}
-  };
+  const auto placements = GenerateLegacyCylinderPMTPlacements();
+  if (placements.empty()) return;
 
   // dummy material; optical behavior is defined by the surface
   auto dummyMat = G4NistManager::Instance()->FindOrBuildMaterial("G4_Galactic");
@@ -1718,72 +1801,39 @@ void DetectorConstruction::BuildPMTPatches()
   fTopPMT_PV.clear(); fBotPMT_PV.clear();
   fTopPMT_Surf.clear(); fBotPMT_Surf.clear();
 
-  for (int i=0;i<4;i++) {
-    auto pvT = new G4PVPlacement(
-      nullptr,
-      centers[i] + G4ThreeVector(0,0,zTop),
-      lv,
-      "PMTtileTopPV",
-      innerCellLogic,
-      false,
-      i,
-      false
-    );
-    auto pvB = new G4PVPlacement(
-      nullptr,
-      centers[i] + G4ThreeVector(0,0,zBot),
-      lv,
-      "PMTtileBotPV",
-      innerCellLogic,
-      false,
-      i,
-      false
-    );
+  for (const auto& placement : placements) {
+    auto rotation = placement.hasRotation
+        ? new G4RotationMatrix(placement.rotation) : nullptr;
+    auto pv = new G4PVPlacement(rotation, placement.position, lv,
+        placement.physicalVolumeName, placement.hostLogicalVolume, false,
+        placement.copyNumber, false);
 
-    fTopPMT_PV.push_back(pvT);
-    fBotPMT_PV.push_back(pvB);
+    const G4bool isTop = placement.surface == SensorSurface::CylinderTop;
+    auto surface = new G4OpticalSurface(
+        (G4String(isTop ? "PMTsurfTop_" : "PMTsurfBot_") +
+         std::to_string(placement.groupIndex)).c_str());
+    surface->SetType(dielectric_metal);
+    surface->SetModel(unified);
+    surface->SetFinish(polished);
+    surface->SetMaterialPropertiesTable(MakeESRMPT());
 
-    auto sTop = new G4OpticalSurface(("PMTsurfTop_"+std::to_string(i)).c_str());
-    auto sBot = new G4OpticalSurface(("PMTsurfBot_"+std::to_string(i)).c_str());
-
-    for (auto s : {sTop, sBot}) {
-      s->SetType(dielectric_metal);
-      s->SetModel(unified);
-      s->SetFinish(polished);
- 
-      auto mptESR = MakeESRMPT();
-      s->SetMaterialPropertiesTable(mptESR);
+    if (isTop) {
+      fTopPMT_PV.push_back(pv);
+      fTopPMT_Surf.push_back(surface);
+    } else {
+      fBotPMT_PV.push_back(pv);
+      fBotPMT_Surf.push_back(surface);
     }
 
-    fTopPMT_Surf.push_back(sTop);
-    fBotPMT_Surf.push_back(sBot);
-
-    // Attach border surfaces (both directions)
+    const auto direction = isTop ? "PMTtop_" : "PMTbot_";
     new G4LogicalBorderSurface(
-      ("LAr_to_PMTtop_"+std::to_string(i)).c_str(),
-      innerCellPhysi,
-      pvT,
-      sTop
-    );
+        (G4String("LAr_to_") + direction +
+         std::to_string(placement.groupIndex)).c_str(),
+        placement.hostPhysicalVolume, pv, surface);
     new G4LogicalBorderSurface(
-      ("PMTtop_to_LAr_"+std::to_string(i)).c_str(),
-      pvT,
-      innerCellPhysi,
-      sTop
-    );
-
-    new G4LogicalBorderSurface(
-      ("LAr_to_PMTbot_"+std::to_string(i)).c_str(),
-      innerCellPhysi,
-      pvB,
-      sBot
-    );
-    new G4LogicalBorderSurface(
-      ("PMTbot_to_LAr_"+std::to_string(i)).c_str(),
-      pvB,
-      innerCellPhysi,
-      sBot
-    );
+        (G4String(direction) + "to_LAr_" +
+         std::to_string(placement.groupIndex)).c_str(),
+        pv, placement.hostPhysicalVolume, surface);
   }
 
   G4cout << "[PMT] Built 4 top + 4 bottom PMT tiles.\n";
@@ -1798,23 +1848,17 @@ void DetectorConstruction::BuildSiPMPatches()
 
   const G4double tile = fSiPMTile;
   const G4double thick = 0.1*mm; // radial thickness
-  const G4double eps   = 0.01*mm; // inset into LAr
-
-  const G4double R = 0.5*innerDiameter;
-  const G4double H = innerHeight;
-
-  const G4ThreeVector zHat(0,0,1);
-
-  // Max rows that fit
-  const int maxRows = static_cast<int>(std::floor(H / tile));
-  // Tiles around circumference
-  const G4double circumference = 2.0 * CLHEP::pi * R;
-  const int nPhi = static_cast<int>(std::floor(circumference / tile));
+  const auto placements = GenerateCylinderSiPMPlacements();
+  const int maxRows = static_cast<int>(std::floor(innerHeight / tile));
+  const int nPhi = maxRows > 0
+      ? static_cast<int>(placements.size()) / maxRows : 0;
   fSiPM_TilesPerRow = nPhi;
 
   G4cout << "[SiPM] maxRows=" << maxRows
          << " tilesPerRow=" << nPhi
-         << " (H=" << H/cm << " cm, R=" << R/cm << " cm)\n";
+         << " (H=" << innerHeight/cm << " cm, R=" << 0.5*innerDiameter/cm << " cm)\n";
+
+  if (placements.empty()) return;
 
 
   // Local box: X=tangential, Y=vertical (z), Z=radial thickness
@@ -1832,44 +1876,25 @@ void DetectorConstruction::BuildSiPMPatches()
   fSiPM_Surf.clear();
   fSiPM_RowOfTile.clear();
 
-  const G4double dphi = 2.0 * CLHEP::pi / nPhi;
-
-  for (int iRow=0; iRow<maxRows; ++iRow) {
-
-    const G4double z = -0.5*H + (iRow + 0.5)*tile;
-
-    for (int j=0; j<nPhi; ++j) {
-
-      const G4double phi = j * dphi;
-
-      const G4double x = (R - eps - 0.5*thick) * std::cos(-phi);
-      const G4double y = (R - eps - 0.5*thick) * std::sin(-phi);
-
-      G4ThreeVector pos = G4ThreeVector(x,y,z);
-      
-    // Build rotation: columns = local axes expressed in global coordinates
-    auto rot = new G4RotationMatrix();
-    rot->rotateZ(phi);
-    rot->rotateY(90.0*deg);
-
-      const int copyNo = iRow*nPhi + j;
-
+  for (const auto& placement : placements) {
+      auto rot = placement.hasRotation
+          ? new G4RotationMatrix(placement.rotation) : nullptr;
       auto pv = new G4PVPlacement(
         rot,
-        pos,
+        placement.position,
         lv,
-        "SiPMtilePV",
-        innerCellLogic,
+        placement.physicalVolumeName,
+        placement.hostLogicalVolume,
         false,
-        copyNo,
+        placement.copyNumber,
         false
       );
 
 
       fSiPM_PV.push_back(pv);
-      fSiPM_RowOfTile.push_back(iRow);
+      fSiPM_RowOfTile.push_back(placement.groupIndex);
 
-      auto s = new G4OpticalSurface(("SiPMsurf_"+std::to_string(copyNo)).c_str());
+      auto s = new G4OpticalSurface(("SiPMsurf_"+std::to_string(placement.copyNumber)).c_str());
       s->SetType(dielectric_metal);
       s->SetModel(unified);
       s->SetFinish(polished);
@@ -1879,18 +1904,17 @@ void DetectorConstruction::BuildSiPMPatches()
       fSiPM_Surf.push_back(s);
 
       new G4LogicalBorderSurface(
-        ("LAr_to_SiPM_"+std::to_string(copyNo)).c_str(),
-        innerCellPhysi,
+        ("LAr_to_SiPM_"+std::to_string(placement.copyNumber)).c_str(),
+        placement.hostPhysicalVolume,
         pv,
         s
       );
       new G4LogicalBorderSurface(
-        ("SiPM_to_LAr_"+std::to_string(copyNo)).c_str(),
+        ("SiPM_to_LAr_"+std::to_string(placement.copyNumber)).c_str(),
         pv,
-        innerCellPhysi,
+        placement.hostPhysicalVolume,
         s
       );
-    }
   }
 
   G4cout << "[SiPM] Built tiles: " << fSiPM_PV.size()

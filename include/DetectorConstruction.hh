@@ -47,6 +47,7 @@
 #include "G4PVPlacement.hh"
 #include "G4Region.hh"
 #include "G4ProductionCuts.hh"
+#include "SensorPlacement.hh"
 #include <sstream>
 #include <algorithm>
 #include <cctype>
@@ -188,6 +189,9 @@ public:
     return HasVolumeRole(volume, VolumeRole::InactiveLAr);
   }
   void ClearVolumeRoles();
+
+  std::vector<SensorPlacement> GenerateLegacyCylinderPMTPlacements() const;
+  std::vector<SensorPlacement> GenerateCylinderSiPMPlacements() const;
 
   void BuildPMTPatches();   // builds 4 top + 4 bottom (max)
   void BuildSiPMPatches();  // builds max rows and tiles
