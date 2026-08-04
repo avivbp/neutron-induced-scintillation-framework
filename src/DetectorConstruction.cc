@@ -502,6 +502,36 @@ DetectorConstruction::~DetectorConstruction()
   delete fDetectorMessenger;
 }
 
+void DetectorConstruction::RegisterVolumeRole(const G4LogicalVolume* volume,
+                                              VolumeRole role)
+{
+  if (!volume) {
+    return;
+  }
+
+  fVolumeRoles[volume] |= static_cast<std::uint32_t>(role);
+}
+
+G4bool DetectorConstruction::HasVolumeRole(const G4LogicalVolume* volume,
+                                           VolumeRole role) const
+{
+  if (!volume) {
+    return false;
+  }
+
+  const auto found = fVolumeRoles.find(volume);
+  if (found == fVolumeRoles.end()) {
+    return false;
+  }
+
+  return (found->second & static_cast<std::uint32_t>(role)) != 0u;
+}
+
+void DetectorConstruction::ClearVolumeRoles()
+{
+  fVolumeRoles.clear();
+}
+
 void DetectorConstruction::UpdateOuterCellSize(G4double d) {
   outerDiameter = d;
   auto rm = G4RunManager::GetRunManager();
@@ -733,6 +763,7 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
 
 
   if(nullptr != fPhysiWorld) { return fPhysiWorld; }
+  ClearVolumeRoles();
   // World
   //
   std::cout << "xxxxxxxxxxxxxxxxxxx" << " world size = " << G4ThreeVector(fWorldSizeX,fWorldSizeYZ,fWorldSizeYZ)/CLHEP::cm << " cm" << std::endl; 
@@ -829,6 +860,10 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
                                            : noScintMaterial,
                                        "outerCell");       //its name
 
+  RegisterVolumeRole(outerCellLogic,
+                     fOuterScintillation ? VolumeRole::ActiveLAr
+                                         : VolumeRole::InactiveLAr);
+
   outerCellPhysi = new G4PVPlacement(transform1,
                                        outerCellLogic,     //its logical volume
                                        "outerCell",         //its name
@@ -846,6 +881,8 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
                                          steel, //its material
                                          "outerLayerOne");       //its name
 
+  RegisterVolumeRole(outerLayerOneLogic, VolumeRole::Cryostat);
+
   outerLayerOnePhysi = new G4PVPlacement(transform1,
                                        outerLayerOneLogic,     //its logical volume
                                        "outerLayerOne",         //its name
@@ -860,6 +897,8 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   outerLayerTwoLogic = new G4LogicalVolume(outerLayerTwoSolid,    //its solid
                                            steel, //its material
                                            "outerLayerTwo");       //its name
+
+  RegisterVolumeRole(outerLayerTwoLogic, VolumeRole::Cryostat);
 
   outerLayerTwoPhysi = new G4PVPlacement(transform1,
                                            outerLayerTwoLogic,     //its logical volume
@@ -880,6 +919,9 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
                                        fAbsorberMaterial, //its material
                                        "innerCell");       //its name
 
+  RegisterVolumeRole(innerCellLogic, VolumeRole::ActiveLAr);
+  RegisterVolumeRole(innerCellLogic, VolumeRole::FiducialLAr);
+
   innerCellPhysi = new G4PVPlacement(0,                      //no rotation
                                      G4ThreeVector(0,0.,0.),
                                      innerCellLogic,     //its logical volume
@@ -896,6 +938,8 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   innerLayerLogic = new G4LogicalVolume(innerLayerSolid,    //its solid
                                         Al, //its material
                                         "innerLayer");       //its name
+
+  RegisterVolumeRole(innerLayerLogic, VolumeRole::Cryostat);
 
   innerLayerPhysi = new G4PVPlacement(0,
                                       G4ThreeVector(),
@@ -1669,6 +1713,7 @@ void DetectorConstruction::BuildPMTPatches()
 
   auto solid = new G4Box("PMTtileSolid", half, half, 0.5*thick);
   auto lv    = new G4LogicalVolume(solid, dummyMat, "PMTtileLV");
+  RegisterVolumeRole(lv, VolumeRole::OpticalDetector);
 
   fTopPMT_PV.clear(); fBotPMT_PV.clear();
   fTopPMT_Surf.clear(); fBotPMT_Surf.clear();
@@ -1775,6 +1820,7 @@ void DetectorConstruction::BuildSiPMPatches()
   // Local box: X=tangential, Y=vertical (z), Z=radial thickness
   auto solid = new G4Box("SiPMtileSolid", 0.5*tile, 0.5*tile, 0.5*thick);
   auto lv    = new G4LogicalVolume(solid, dummyMat, "SiPMtileLV");
+  RegisterVolumeRole(lv, VolumeRole::OpticalDetector);
   
   auto visAttributes = new G4VisAttributes(G4Colour(1.,1.,1.)); // world is white
   visAttributes->SetVisibility(true);

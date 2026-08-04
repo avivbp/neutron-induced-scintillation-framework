@@ -50,6 +50,8 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
+#include <unordered_map>
 #include <vector>
 
 class G4Box;
@@ -64,6 +66,19 @@ class G4GlobalMagFieldMessenger;
 
 class DetectorConstruction : public G4VUserDetectorConstruction
 {
+public:
+  enum class VolumeRole : std::uint32_t {
+    ActiveLAr       = 1u << 0,
+    FiducialLAr     = 1u << 1,
+    InactiveLAr     = 1u << 2,
+    Cryostat        = 1u << 3,
+    OpticalDetector = 1u << 4,
+    ExternalDetector = 1u << 5,
+  };
+
+private:
+  std::unordered_map<const G4LogicalVolume*, std::uint32_t> fVolumeRoles;
+
   // ------------------ Config knobs (set by messenger) ------------------
   G4int    fTopPMTs   = 0;     // 0..4 active tiles
   G4int    fBotPMTs   = 0;     // 0..4 active tiles
@@ -161,6 +176,10 @@ class DetectorConstruction : public G4VUserDetectorConstruction
   // ------------------ Build + apply methods ------------------
 
 public:
+  void RegisterVolumeRole(const G4LogicalVolume* volume, VolumeRole role);
+  G4bool HasVolumeRole(const G4LogicalVolume* volume, VolumeRole role) const;
+  void ClearVolumeRoles();
+
   void BuildPMTPatches();   // builds 4 top + 4 bottom (max)
   void BuildSiPMPatches();  // builds max rows and tiles
   void ApplySensorConfig(); // updates EFFICIENCY/REFLECTIVITY per patch
