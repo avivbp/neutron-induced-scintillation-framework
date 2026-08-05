@@ -72,6 +72,11 @@ or TOF cuts used for the legacy event CSV. Secondary lists are encoded as
 are omitted, while transportation out of the simulation world is retained as
 `transport_exit`.
 
+The detector exposes this behavior through the generic
+`AllowsAllNeutronInteractions` capability. It is enabled for `box_cryostat`;
+the legacy `nested_cell` model retains its elastic-only selection by aborting
+an event immediately after recording its first neutron-inelastic interaction.
+
 Energy deposition and scintillation must also be attributable to depositing
 particle classes. Inelastic events can mix nuclear recoils, secondary neutrons,
 gammas, electrons, protons, alphas, and heavier ions; total inelastic deposited

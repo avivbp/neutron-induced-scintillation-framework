@@ -215,6 +215,11 @@ public:
   void SetRunLabel(const G4String& label) { fRunLabel = label; }
   const G4String& GetRunLabel() const { return fRunLabel; }
   DetectorModel GetDetectorModel() const { return fDetectorModel; }
+  // Interaction handling is intentionally exposed as a detector capability,
+  // so stepping code does not depend on a DUNE- or shape-specific name.
+  G4bool AllowsAllNeutronInteractions() const {
+    return fDetectorModel == DetectorModel::BoxCryostat;
+  }
 
   void RegisterVolumeRole(const G4LogicalVolume* volume, VolumeRole role);
   G4bool HasVolumeRole(const G4LogicalVolume* volume, VolumeRole role) const;

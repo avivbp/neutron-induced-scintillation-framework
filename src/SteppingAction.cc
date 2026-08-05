@@ -581,6 +581,13 @@ std::cout << "after optical)" << std::endl;
   if (hmm2 && isNeutron){
       //printEventStats(aStep,10);
       if (inelastic.compare(processName) == 0){ 
+          // The legacy nested-cell study selects elastic events only. Keep
+          // its historical early termination, while general detector models
+          // can retain the complete inelastic cascade and secondary tracks.
+          if (!fDetector->AllowsAllNeutronInteractions()) {
+              G4EventManager::GetEventManager()->AbortCurrentEvent();
+          }
+
           G4int ns = 0;
           G4int ps = 0;
           for(int i = 0; i < size; i++){

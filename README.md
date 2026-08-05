@@ -413,6 +413,12 @@ pipe-separated list of `particle:PDG-code:kinetic-energy-keV` entries. In
 multithreaded runs, rows from one event remain together, but event blocks can
 appear in completion order rather than numeric event order.
 
+Interaction transport follows the detector model. The legacy `nested_cell`
+model preserves its elastic-only workflow by aborting the current event after
+the first neutron-inelastic interaction (the triggering interaction itself is
+still recorded). The general `box_cryostat` model allows the complete
+inelastic cascade and secondary-neutron tracks to continue.
+
 ## Neutron scintillation correction
 
 For newly simulated data, gamma calibration enables this normalization:
