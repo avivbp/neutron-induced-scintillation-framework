@@ -180,6 +180,14 @@ Each checkpoint is implemented, tested, committed, and pushed independently:
 8. add particle-class energy and scintillation bookkeeping; and
 9. update analyses with channel-aware topology categories.
 
+Checkpoint 9 joins cut-selected neutron event rows to the matching per-config
+interaction-truth file. The analysis distinguishes no-record/transport-only,
+single/multiple elastic, inelastic, elastic-plus-inelastic, capture, fission,
+other-hadronic, and unclassified topologies. It writes both frequency summaries
+and event-level channel counts. The PE analysis uses truth-defined single
+fiducial elastics when available and falls back to legacy event columns for
+pre-truth run directories.
+
 Large DUNE-scale optical transport may require photon libraries, fast optical
 simulation, or parameterized response. That performance choice is deliberately
 kept outside the geometry, interaction-truth, and placement interfaces.

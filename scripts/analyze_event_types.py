@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Summarize neutron event types among rows that passed simulation cuts.
+"""Summarize neutron topologies among rows that passed simulation cuts.
 
 Each neutron ``numPE_*.csv`` contains only events written after the detected,
-positive-PE, and TOF requirements.  This script classifies those rows using
-``numElasticSensitive`` and ``scatteredNotSensitive`` into mutually exclusive
-event types and reports counts and relative frequencies.
+positive-PE, and TOF requirements. This script joins those event IDs to the
+matching interaction-truth CSV and reports mutually exclusive channel-aware
+topologies. Legacy event columns are used when interaction truth is absent.
 """
 
 from __future__ import annotations
@@ -19,25 +19,38 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from event_topology import (
+    TOPOLOGY_CATEGORIES,
+    classify_event_topologies,
+    interaction_truth_path_for_pe,
+)
+
 
 FILE_PATTERN = "numPE_*_topPMTs_*_botPMTs_*_SiPMRows.csv"
-CATEGORIES = (
-    "true_single_elastic",
-    "single_elastic_external_scatter",
-    "multiple_elastic",
-    "other_or_inelastic",
-)
+CATEGORIES = TOPOLOGY_CATEGORIES
 LABELS = {
-    "true_single_elastic": "True single elastic",
-    "single_elastic_external_scatter": "Single elastic + external scatter",
+    "no_recorded_interaction": "No recorded interaction",
+    "transport_exit_only": "Transport exit only",
+    "single_elastic": "Single elastic",
     "multiple_elastic": "Multiple elastic",
-    "other_or_inelastic": "Other / inelastic / capture",
+    "inelastic": "Inelastic",
+    "elastic_plus_inelastic": "Elastic + inelastic",
+    "capture": "Capture",
+    "fission": "Fission",
+    "other_hadronic": "Other hadronic",
+    "unclassified": "Unclassified",
 }
 COLORS = {
-    "true_single_elastic": "#2ca02c",
-    "single_elastic_external_scatter": "#ff7f0e",
+    "no_recorded_interaction": "#d9d9d9",
+    "transport_exit_only": "#9ecae1",
+    "single_elastic": "#2ca02c",
     "multiple_elastic": "#d62728",
-    "other_or_inelastic": "#7f7f7f",
+    "inelastic": "#ff7f0e",
+    "elastic_plus_inelastic": "#9467bd",
+    "capture": "#1f77b4",
+    "fission": "#8c564b",
+    "other_hadronic": "#e377c2",
+    "unclassified": "#7f7f7f",
 }
 
 
@@ -72,6 +85,26 @@ def as_boolean(values: pd.Series) -> pd.Series:
 def load_and_classify(path: Path) -> pd.DataFrame:
     frame = pd.read_csv(path)
     frame.columns = frame.columns.astype(str).str.strip()
+    truth_path = interaction_truth_path_for_pe(path)
+    if truth_path is not None:
+        if "eventID" not in frame.columns:
+            raise ValueError(f"{path} is missing eventID for interaction-truth join")
+        interactions = pd.read_csv(truth_path)
+        event_ids = pd.to_numeric(frame["eventID"], errors="coerce")
+        topology = classify_event_topologies(interactions, event_ids)
+        result = frame.copy()
+        result["_event_id"] = event_ids
+        result = result.merge(
+            topology,
+            how="left",
+            left_on="_event_id",
+            right_on="event_id",
+            validate="many_to_one",
+        ).drop(columns=["_event_id", "event_id"])
+        result["topology_source"] = truth_path.name
+        result["source_file"] = path.name
+        return result
+
     required = {"numElasticSensitive", "scatteredNotSensitive"}
     missing = sorted(required.difference(frame.columns))
     if missing:
@@ -79,19 +112,31 @@ def load_and_classify(path: Path) -> pd.DataFrame:
 
     elastic = pd.to_numeric(frame["numElasticSensitive"], errors="coerce")
     external = as_boolean(frame["scatteredNotSensitive"])
-    clean = pd.Series(True, index=frame.index)
-    for column in ("numInelastic", "nCapture", "InelasticSensitive"):
+    inelastic = pd.Series(False, index=frame.index)
+    for column in ("numInelastic", "InelasticSensitive"):
         if column in frame.columns:
-            clean &= pd.to_numeric(frame[column], errors="coerce").fillna(0).eq(0)
+            inelastic |= pd.to_numeric(
+                frame[column], errors="coerce"
+            ).fillna(0).gt(0)
+    capture = (
+        pd.to_numeric(frame["nCapture"], errors="coerce").fillna(0).gt(0)
+        if "nCapture" in frame.columns
+        else pd.Series(False, index=frame.index)
+    )
 
-    category = np.full(len(frame), "other_or_inelastic", dtype=object)
-    category[(elastic == 1) & ~external & clean] = "true_single_elastic"
-    category[(elastic == 1) & external & clean] = "single_elastic_external_scatter"
-    # Multiple fiducial elastics take precedence regardless of external scatter.
-    category[(elastic >= 2) & clean] = "multiple_elastic"
+    category = np.full(len(frame), "unclassified", dtype=object)
+    category[(elastic == 1) & ~external & ~inelastic & ~capture] = (
+        "single_elastic"
+    )
+    category[((elastic >= 2) | ((elastic == 1) & external))
+             & ~inelastic & ~capture] = "multiple_elastic"
+    category[inelastic & elastic.gt(0) & ~capture] = "elastic_plus_inelastic"
+    category[inelastic & elastic.le(0) & ~capture] = "inelastic"
+    category[capture] = "capture"
 
     result = frame.copy()
     result["event_type"] = category
+    result["topology_source"] = "legacy_event_columns"
     result["source_file"] = path.name
     return result
 
@@ -117,6 +162,9 @@ def summary_rows(
                 "scattering_angle_deg": scattering_angle_deg,
                 "event_type": category,
                 "event_type_label": LABELS[category],
+                "topology_source": "|".join(
+                    sorted(frame["topology_source"].dropna().unique())
+                ),
                 "count": count,
                 "total_passed_events": total,
                 "relative_frequency": count / total if total else np.nan,
@@ -336,11 +384,16 @@ def main() -> None:
         raise SystemExit("No neutron run directories containing numPE CSVs found")
 
     summaries: list[pd.DataFrame] = []
+    classified_events: list[pd.DataFrame] = []
     for run_dir in run_dirs:
         summary, combined = summarize_run(run_dir)
         if summary.empty:
             continue
         summaries.append(summary)
+        combined = combined.copy()
+        combined["run_directory"] = str(run_dir)
+        combined["run_name"] = run_dir.name
+        classified_events.append(combined)
         run_total = summary[
             (summary["grouping"] == "run")
             & (summary["event_type"] == CATEGORIES[0])
@@ -357,6 +410,28 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     summary_path = args.output_dir / "event_type_frequencies.csv"
     result.to_csv(summary_path, index=False)
+    event_path = args.output_dir / "passed_event_topologies.csv"
+    event_details = pd.concat(classified_events, ignore_index=True)
+    identity_columns = [
+        "run_directory",
+        "run_name",
+        "source_file",
+        "eventID",
+        "detector",
+        "event_type",
+        "topology_source",
+    ]
+    count_columns = [
+        column
+        for column in event_details.columns
+        if column.endswith("_count")
+    ]
+    detail_columns = [
+        column
+        for column in identity_columns + count_columns
+        if column in event_details.columns
+    ]
+    event_details[detail_columns].to_csv(event_path, index=False)
     plot_path = args.output_dir / "event_type_frequencies_by_run.png"
     plot_run_frequencies(result, plot_path)
     detector_plot_paths: list[Path] = []
@@ -369,6 +444,7 @@ def main() -> None:
         if detector_path.exists():
             detector_plot_paths.append(detector_path)
     print(f"[event types] wrote {summary_path}")
+    print(f"[event types] wrote {event_path}")
     print(f"[event types] wrote {plot_path}")
     for detector_path in detector_plot_paths:
         print(f"[event types] wrote {detector_path}")

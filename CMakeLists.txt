@@ -57,7 +57,9 @@ if(BUILD_TESTING)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   add_test(NAME ConfigToolsTest
            COMMAND ${Python3_EXECUTABLE} tests/test_config_tools.py)
-  set_tests_properties(ConfigToolsTest PROPERTIES
+  add_test(NAME EventTopologyTest
+           COMMAND ${Python3_EXECUTABLE} tests/test_event_topology.py)
+  set_tests_properties(ConfigToolsTest EventTopologyTest PROPERTIES
                        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 endif()
 

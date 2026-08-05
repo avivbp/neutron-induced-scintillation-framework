@@ -39,6 +39,10 @@ import pandas as pd
 import yaml
 
 from neutron_scintillation_correction import apply_correction
+from event_topology import (
+    interaction_truth_path_for_pe,
+    true_single_elastic_mask_from_truth,
+)
 
 
 PE_COLUMN_CANDIDATES = ("numPE", "nPE", "pe", "PE")
@@ -176,8 +180,19 @@ def as_boolean(values: pd.Series) -> pd.Series:
     return result
 
 
-def true_single_elastic_mask(frame: pd.DataFrame) -> pd.Series:
+def true_single_elastic_mask(
+    frame: pd.DataFrame,
+    interaction_path: Path | None = None,
+) -> pd.Series:
     """Select one clean inner-cell elastic scatter and no other interaction."""
+    if interaction_path is not None:
+        try:
+            return true_single_elastic_mask_from_truth(frame, interaction_path)
+        except (OSError, pd.errors.ParserError, ValueError) as exc:
+            raise ValueError(
+                f"could not use {interaction_path.name}: {exc}"
+            ) from exc
+
     missing = [
         column for column in TRUE_SINGLE_REQUIRED_COLUMNS
         if column not in frame.columns
@@ -496,10 +511,16 @@ def load_summaries(
         # Fix headers such as "detector    ".
         frame.columns = frame.columns.astype(str).str.strip()
 
+        interaction_path = interaction_truth_path_for_pe(path)
         try:
-            true_single = true_single_elastic_mask(frame)
+            true_single = true_single_elastic_mask(frame, interaction_path)
         except ValueError as exc:
             raise SystemExit(f"{path.name}: {exc}") from exc
+        if interaction_path is not None:
+            print(
+                "[analysis] topology selection: "
+                f"{path.name} joined to {interaction_path.name}"
+            )
 
         pe_column = find_pe_column(frame)
         if pe_column is None:

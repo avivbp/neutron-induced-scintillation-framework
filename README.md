@@ -538,24 +538,29 @@ python3 scripts/analyze_event_types.py \
     output/neutron_14MeV
 ```
 
-Categories are mutually exclusive:
+For current runs, each selected `eventID` is joined to its matching
+`neutron_interactions_<config_id>.csv`; this includes interactions by primary
+and secondary neutron tracks. Categories are mutually exclusive:
 
-- **True single elastic:** exactly one sensitive-LAr elastic scatter, no
-  `scatteredNotSensitive` flag, no inelastic interaction, and no capture.
-- **Single elastic + external scatter:** exactly one sensitive-LAr elastic
-  scatter with `scatteredNotSensitive`, no inelastic interaction, and no
-  capture.
-- **Multiple elastic:** at least two sensitive-LAr elastic scatters, with or
-  without an external scatter, and no inelastic interaction or capture.
-- **Other / inelastic / capture:** every remaining passed row.
+- **No recorded interaction** and **transport exit only**;
+- **single elastic** and **multiple elastic**;
+- **inelastic** and **elastic + inelastic**;
+- **capture**, **fission**, **other hadronic**, and **unclassified**.
 
-`scatteredNotSensitive` is the combined available flag for scattering outside
-the sensitive LAr, including external, cryostat, inner-layer, and external
-inelastic activity.
+Fission, capture, other-hadronic, and unclassified records take precedence over
+the elastic/inelastic categories; the event-level output retains every channel
+count. A true-single-elastic event used by the PE money plots must contain
+exactly one elastic interaction in fiducial LAr and no other hadronic
+interaction anywhere. When interaction-truth files are absent, older run
+directories remain analyzable through a documented approximation using the
+legacy event columns.
 
 Outputs under `output/event_type_analysis/` include:
 
 - `event_type_frequencies.csv` with file-, run-, and detector-level counts;
+- `passed_event_topologies.csv` with each selected event's topology and, when
+  interaction truth is available, its channel counts, fiducial-elastic count,
+  and primary/secondary-neutron counts;
 - `event_type_frequencies_by_run.png`;
 - one detector/angle frequency plot per neutron run.
 
