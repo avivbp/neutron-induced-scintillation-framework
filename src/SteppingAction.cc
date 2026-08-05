@@ -196,8 +196,6 @@ void SteppingAction::UserSteppingAction(const G4Step* aStep)
   const std::vector< const G4Track *> * secondaries = aStep->GetSecondaryInCurrentStep();
   G4int size  = (int) (secondaries->size());
 
-  RecordNeutronInteraction(aStep);
-
   static G4ParticleDefinition* opticalphoton =
     G4OpticalPhoton::OpticalPhotonDefinition();
 
@@ -393,6 +391,12 @@ if (verbose2){
 std::cout << "after 2B)" << std::endl;
 }
 // ---- END: universal guards ----
+
+  // Keep interaction bookkeeping behind the same time, step, and boundary
+  // guards as the legacy counters.  A step rejected by one of those guards
+  // must not alter the event summary, even though Geant4 has already selected
+  // a process for it.
+  RecordNeutronInteraction(aStep);
 
  // if (eventID == 0) {
   //const int tid = G4Threading::G4GetThreadId();
