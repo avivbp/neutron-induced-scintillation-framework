@@ -292,19 +292,21 @@ if (verbose2){
   // ---- BEGIN: universal guards (paste near top of UserSteppingAction) ----
 const bool isOpt = (particleDef == opticalphoton);
 
-// Count each scintillation photon once, before WLS or transport losses. Active
-// LAr membership is assigned by detector construction, independent of names or
-// detector shape.
+// Scintillation photons are counted at creation by StackingAction, after the
+// configured ion-yield thinning and before optical transport.
 const G4bool isCountedLAr = fDetector->IsActiveLAr(preLV);
-if (isOpt && stepNo == 1 && isCountedLAr &&
-    (!creator || creator->GetProcessName() != "OpWLS")) {
-  ++fEventAction->numPhotons;
-}
 
 // Accumulate energy in exactly the same active LAr volume(s) used above.
-// Optical energy is excluded to avoid double counting.
+// Optical energy is excluded to avoid double counting, and the depositing
+// track determines the particle-class attribution.
 if (!isOpt && isCountedLAr) {
-  fEventAction->eDep += aStep->GetTotalEnergyDeposit() / CLHEP::MeV;
+  const auto depositingClass = ClassifyParticle(
+      particleDef->GetParticleName(), particleDef->GetParticleType(),
+      particleDef->GetAtomicNumber(), particleDef->GetAtomicMass(),
+      track->GetParentID());
+  fEventAction->AddActiveLArEnergyDeposit(
+      depositingClass,
+      aStep->GetTotalEnergyDeposit() / CLHEP::MeV);
 }
 
 if (track->GetGlobalTime() > 10000.0 * CLHEP::ns) {

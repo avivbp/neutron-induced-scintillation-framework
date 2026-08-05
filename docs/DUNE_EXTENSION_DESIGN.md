@@ -82,6 +82,16 @@ particle classes. Inelastic events can mix nuclear recoils, secondary neutrons,
 gammas, electrons, protons, alphas, and heavier ions; total inelastic deposited
 energy must not be treated as one nuclear recoil.
 
+The implementation writes one uncut event row to
+`particle_class_summary_<config_id>.csv`. Active-LAr energy and produced
+scintillation photons are split into primary neutron, secondary neutron, gamma,
+electron/positron, proton, alpha, nuclear recoil, and other classes. Totals are
+computed from the class values. Photon attribution occurs after the existing
+ion-yield thinning and before optical transport, wavelength shifting, and
+sensor response. Consequently, an intentionally aborted `nested_cell`
+inelastic event contains only pre-abort deposits, while `box_cryostat` records
+the complete inelastic cascade.
+
 ## Shape-aware optical sensor placement
 
 Sensor response (PDE, reflectivity, wavelength dependence, and active/inactive

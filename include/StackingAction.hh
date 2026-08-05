@@ -34,6 +34,7 @@
 #define StackingAction_h 1
 
 #include "G4UserStackingAction.hh"
+#include "ParticleBookkeeping.hh"
 #include "globals.hh"
 #include "G4OpticalPhoton.hh"
 #include <unordered_map>
@@ -58,7 +59,7 @@ class StackingAction : public G4UserStackingAction
   private:
     DetectorConstruction* fDetector;
     EventAction*        fEventAction;    
-    std::unordered_map<G4int, G4bool> fNuclearTrack;
+    std::unordered_map<G4int, ParticleClass> fParticleClassByTrack;
     
     G4bool              fKillSecondary = 0;
     StackingMessenger*  fStackMessenger;

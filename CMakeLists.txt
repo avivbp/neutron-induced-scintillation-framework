@@ -50,6 +50,10 @@ if(BUILD_TESTING)
                  tests/NeutronInteractionTest.cc
                  src/NeutronInteraction.cc)
   add_test(NAME NeutronInteractionTest COMMAND NeutronInteractionTest)
+  add_executable(ParticleBookkeepingTest
+                 tests/ParticleBookkeepingTest.cc
+                 src/ParticleBookkeeping.cc)
+  add_test(NAME ParticleBookkeepingTest COMMAND ParticleBookkeepingTest)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   add_test(NAME ConfigToolsTest
            COMMAND ${Python3_EXECUTABLE} tests/test_config_tools.py)

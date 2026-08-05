@@ -53,6 +53,7 @@ namespace {
   G4Mutex gammaCsvMutex = G4MUTEX_INITIALIZER;
   std::atomic<G4long> gammaPrimariesCompleted{0};
   std::atomic<bool> interactionCsvWarningPrinted{false};
+  std::atomic<bool> particleBookkeepingCsvWarningPrinted{false};
 
   // One set of files *per worker thread* (no mutex required).
   thread_local std::unique_ptr<std::ofstream> tls_hits;
@@ -148,6 +149,8 @@ void EventAction::BeginOfEventAction(const G4Event* evt )
  Coincedence = true;
  std::ostringstream().swap(buf_hits);
  fNeutronInteractions.clear();
+ fParticleBookkeeping = EventParticleBookkeeping{};
+ fParticleBookkeeping.eventId = evt->GetEventID();
  ClearWLSDeDupe();
  //ClearBornInnerScint();
  //ClearSeenUV();
@@ -181,6 +184,14 @@ void EventAction::EndOfEventAction(const G4Event* evt)
       G4cerr << "[interaction truth] could not append "
             << interactionFilename
             << G4endl;
+  }
+  const auto particleBookkeepingFilename =
+      ParticleBookkeepingCsvFilename(det->GetRunLabel());
+  if (!AppendParticleBookkeepingCsv(fParticleBookkeeping,
+                                    particleBookkeepingFilename) &&
+      !particleBookkeepingCsvWarningPrinted.exchange(true)) {
+      G4cerr << "[particle bookkeeping] could not append "
+            << particleBookkeepingFilename << G4endl;
   }
 
   //std::cout << "end of eventAction number: " << eventID << std::endl;
@@ -357,6 +368,25 @@ void EventAction::AddNeutronInteraction(NeutronInteractionRecord record)
 {
   record.interactionIndex = fNeutronInteractions.size();
   fNeutronInteractions.push_back(std::move(record));
+}
+
+void EventAction::AddActiveLArEnergyDeposit(
+    ParticleClass particleClass, G4double energyDepositMeV)
+{
+  if (energyDepositMeV <= 0.0) {
+    return;
+  }
+  const auto index = static_cast<std::size_t>(particleClass);
+  fParticleBookkeeping.energyDepositMeV[index] += energyDepositMeV;
+  eDep += energyDepositMeV;
+}
+
+void EventAction::AddActiveLArScintillationPhoton(
+    ParticleClass particleClass)
+{
+  const auto index = static_cast<std::size_t>(particleClass);
+  ++fParticleBookkeeping.scintillationPhotons[index];
+  ++numPhotons;
 }
 
 void EventAction::UpdateNeutronInteractionSummary()

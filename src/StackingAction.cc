@@ -40,8 +40,8 @@
 
 #include "G4RunManager.hh"
 #include "G4Track.hh"
+#include "G4VPhysicalVolume.hh"
 #include "G4EmSecondaryParticleType.hh"
-#include "G4Neutron.hh"
 #include "Randomize.hh"
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -65,10 +65,11 @@ G4ClassificationOfNewTrack
 StackingAction::ClassifyNewTrack(const G4Track* aTrack)
 {
   const auto* definition = aTrack->GetDefinition();
-  const G4bool isNuclear =
-      definition->GetParticleType() == "nucleus" ||
-      definition == G4Neutron::NeutronDefinition();
-  fNuclearTrack[aTrack->GetTrackID()] = isNuclear;
+  const auto particleClass = ClassifyParticle(
+      definition->GetParticleName(), definition->GetParticleType(),
+      definition->GetAtomicNumber(), definition->GetAtomicMass(),
+      aTrack->GetParentID());
+  fParticleClassByTrack[aTrack->GetTrackID()] = particleClass;
 
   // Geant4 11 makes its built-in particle-dependent scintillation and Birks
   // saturation mutually exclusive. Preserve the fitted Birks response, then
@@ -78,12 +79,23 @@ StackingAction::ClassifyNewTrack(const G4Track* aTrack)
   if (definition == G4OpticalPhoton::OpticalPhotonDefinition() &&
       aTrack->GetCreatorProcess() &&
       aTrack->GetCreatorProcess()->GetProcessName() == "Scintillation") {
-    const auto parent = fNuclearTrack.find(aTrack->GetParentID());
-    const G4bool isLAr =
-        fDetector->IsActiveLAr(aTrack->GetLogicalVolumeAtVertex());
-    if (isLAr && parent != fNuclearTrack.end() && parent->second &&
+    const auto parent = fParticleClassByTrack.find(aTrack->GetParentID());
+    // Newly stacked secondaries have a current touchable before Geant4 fills
+    // the cached logical volume at the vertex.
+    const auto* physicalVolume = aTrack->GetVolume();
+    const auto* logicalVolume =
+        physicalVolume ? physicalVolume->GetLogicalVolume()
+                       : aTrack->GetLogicalVolumeAtVertex();
+    const G4bool isLAr = fDetector->IsActiveLAr(logicalVolume);
+    if (isLAr && parent != fParticleClassByTrack.end() &&
+        UsesIonScintillationYieldScale(parent->second) &&
         G4UniformRand() > fDetector->GetIonScintYieldScale()) {
       return fKill;
+    }
+    if (isLAr) {
+      fEventAction->AddActiveLArScintillationPhoton(
+          parent != fParticleClassByTrack.end() ? parent->second
+                                                : ParticleClass::Other);
     }
   }
 
@@ -171,7 +183,7 @@ StackingAction::ClassifyNewTrack(const G4Track* aTrack)
 
 void StackingAction::PrepareNewEvent()
 {
-  fNuclearTrack.clear();
+  fParticleClassByTrack.clear();
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......

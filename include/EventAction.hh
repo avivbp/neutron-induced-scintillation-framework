@@ -35,6 +35,7 @@
 
 #include "G4UserEventAction.hh"
 #include "NeutronInteraction.hh"
+#include "ParticleBookkeeping.hh"
 #include "globals.hh"
 #include <iostream>
 #include <fstream>
@@ -172,6 +173,9 @@ public:
     virtual void   EndOfEventAction(const G4Event*);
 
     void AddNeutronInteraction(NeutronInteractionRecord record);
+    void AddActiveLArEnergyDeposit(ParticleClass particleClass,
+                                   G4double energyDepositMeV);
+    void AddActiveLArScintillationPhoton(ParticleClass particleClass);
  
     inline void BufferHitRow(const std::vector<std::string>& fields) {
     for (size_t i=0;i<fields.size();++i) { if(i) buf_hits<<','; buf_hits<<fields[i]; }
@@ -209,6 +213,7 @@ public:
     void UpdateNeutronInteractionSummary();
 
     std::vector<NeutronInteractionRecord> fNeutronInteractions;
+    EventParticleBookkeeping fParticleBookkeeping;
     std::unordered_set<G4int> fSeenUV; // TrackIDs of UV photons already counted
     G4double fEnergyDeposit;
     G4double fTrakLenCharged, fTrakLenNeutral;

@@ -419,6 +419,22 @@ the first neutron-inelastic interaction (the triggering interaction itself is
 still recorded). The general `box_cryostat` model allows the complete
 inelastic cascade and secondary-neutron tracks to continue.
 
+Every event also receives a particle-resolved energy and scintillation summary
+in `particle_class_summary_<config_id>.csv`, without the detected-neutron,
+positive-PE, or TOF cuts used for the legacy event CSV. Energy deposited in
+active LAr and scintillation photons produced there are split into primary
+neutron, secondary neutron, gamma, electron/positron, proton, alpha, nuclear
+recoil, and other classes. The total columns are the sums of those classes.
+In multithreaded runs, rows can appear in completion order rather than event-ID
+order.
+
+Scintillation photons are attributed to their parent particle after the
+configured ion-yield thinning and before wavelength shifting, transport loss,
+or sensor response. This preserves the meaning of the legacy `numPhotons`
+field. For `nested_cell`, a rejected inelastic event's summary contains only
+energy and light produced before its intentional abort; `box_cryostat`
+summaries cover the complete cascade.
+
 ## Neutron scintillation correction
 
 For newly simulated data, gamma calibration enables this normalization:

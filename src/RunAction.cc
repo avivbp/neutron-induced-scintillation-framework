@@ -36,6 +36,7 @@
 #include "HistoManager.hh"
 #include "Run.hh"
 #include "NeutronInteraction.hh"
+#include "ParticleBookkeeping.hh"
 #include "G4Run.hh"
 #include "G4UnitsTable.hh"
 #include "G4EmCalculator.hh"
@@ -101,6 +102,12 @@ void RunAction::BeginOfRunAction(const G4Run*)
       if (!InitializeNeutronInteractionCsv(interactionFilename)) {
           G4cerr << "[interaction truth] could not initialize "
                 << interactionFilename << G4endl;
+      }
+      const auto particleBookkeepingFilename =
+          ParticleBookkeepingCsvFilename(fDetector->GetRunLabel());
+      if (!InitializeParticleBookkeepingCsv(particleBookkeepingFilename)) {
+          G4cerr << "[particle bookkeeping] could not initialize "
+                << particleBookkeepingFilename << G4endl;
       }
       G4Random::showEngineStatus();
       auto* pm = G4Electron::Electron()->GetProcessManager();
