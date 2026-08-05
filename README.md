@@ -1,12 +1,30 @@
 # Neutron-Induced Scintillation Framework
 
 A Geant4 and Python workflow for simulating neutron-induced scintillation in
-liquid argon (LAr), scanning optical sensor coverage, calibrating the simulated
-gamma/electron-recoil light yield, correcting neutron-recoil photoelectron
-production, and auditing the topology of selected neutron events.
+liquid argon (LAr). It supports both the original nested cylindrical cell and a
+generic DUNE-like box cryostat, configurable optical sensors and external
+neutron taggers, gamma/electron-recoil light-yield calibration, corrected
+photoelectron analysis, uncut neutron-interaction truth, particle-resolved
+energy/light bookkeeping, and channel-aware event topology analysis.
 
-The framework has two distinct simulation modes driven by two Python entry
-points:
+## Capabilities
+
+| Area | Supported capabilities |
+| --- | --- |
+| Detector geometry | Legacy concentric cylindrical LAr cells (`nested_cell`) or a configurable rectangular active-LAr volume, inset fiducial volume, and steel shell (`box_cryostat`). |
+| Volume semantics | Logical-volume roles for active LAr, fiducial LAr, inactive LAr, cryostat, optical detector, and external detector. Analysis does not depend on legacy volume names. |
+| Optical sensors | Legacy top/bottom PMT patches and cylindrical SiPM rows; box-face PMT or SiPM grids on any combination of `+x`, `-x`, `+y`, `-y`, `+z`, and `-z`. |
+| Sensor response | Flat PDE, scalable built-in spectral curves, raw built-in curves, scalable CSV curves, or raw CSV curves; independent PMT/SiPM reflectivity and PDE. |
+| Physics | `QGSP_BERT_HP` neutron transport, EM option 4, optical scintillation/WLS/transport, Birks saturation, and statistical neutron/alpha/nuclear-recoil light scaling. Distributed batch templates disable Cerenkov. |
+| Neutron tagging | Any number of labeled external neutron detectors with configurable angle and distance, plus a configurable TOF window. |
+| Interaction transport | The legacy nested cell intentionally stops an event at its first neutron-inelastic interaction. The box cryostat retains elastic, inelastic, capture, fission, secondary-neutron, and mixed cascades. |
+| Truth output | Uncut interaction records for primary and secondary neutrons, including volume roles, process/channel, kinematics, local deposit, and produced secondaries. |
+| Signal bookkeeping | Per-event active-LAr energy deposition and produced scintillation photons split by primary neutron, secondary neutron, gamma, electron/positron, proton, alpha, nuclear recoil, and other. |
+| Calibration and analysis | Multithreaded gamma calibration, event-level neutron light normalization, coverage-versus-PE plots, detector-angle plots, bootstrap/SEM uncertainties, and truth-defined topology frequencies. |
+| Reproducibility | Generated macros, archived YAML/scan inputs, per-configuration run labels, deterministic analysis seeds, and thread-safe CSV writers. |
+
+Independent of the chosen detector model, the framework has two execution
+modes driven by two Python entry points:
 
 - `scripts/calibrate_gamma_trend.py` always runs gamma calibration macros.
 - `scripts/run_scan.py` always runs neutron sensor-scan macros.
@@ -28,14 +46,16 @@ output/gamma_calibration/config_with_gamma_trend.yaml
         v
 output/<neutron-run>/numPE_*.csv
         |
-        +--> analyze_money_plot.py       corrected PE summaries and plots
-        +--> analyze_event_types.py      event-topology frequencies
+        +--> neutron_interactions_<config_id>.csv   uncut interaction truth
+        +--> particle_class_summary_<config_id>.csv uncut energy/light truth
+        +--> analyze_money_plot.py                  corrected PE summaries
+        +--> analyze_event_types.py                 topology frequencies
 ```
 
 The normal sequence is:
 
-1. Configure detector geometry, LAr optics, gamma energies, and run settings in
-   `config/example_config.yaml`.
+1. Start from the complete nested-cell or DUNE-like example below and save it
+   as a YAML file.
 2. Build the Geant4 executable.
 3. Run the gamma calibration.
 4. Use the generated `config_with_gamma_trend.yaml` for neutron simulation and
@@ -90,12 +110,13 @@ for that executable inside `run.build_dir`.
 `config/example_config.yaml` is the editable source configuration. It defines:
 
 - executable, build directory, event count, thread count, and output directory;
+- `nested_cell` or `box_cryostat` detector selection;
 - neutron primary energy;
-- inner and outer LAr geometry;
+- nested cylindrical dimensions or box active/fiducial/cryostat dimensions;
 - neutron detector labels, scattering angles, and distances;
 - LAr scintillation yield, yield scale, Birks constant, timing, and absorption;
 - TPB and reflector properties;
-- PMT and SiPM response settings;
+- PMT and SiPM response settings and optional box-face layouts;
 - TOF and event-selection settings;
 - gamma calibration energies and statistics;
 - neutron scintillation-correction settings.
@@ -137,15 +158,368 @@ Return to the default with:
 unset LARSIM_CALIBRATED_CONFIG
 ```
 
+## Detector models
+
+| Behavior | `nested_cell` | `box_cryostat` |
+| --- | --- | --- |
+| Active geometry | Inner LAr cylinder; outer concentric LAr cylinder can optionally scintillate | Rectangular active-LAr box with an optional inset fiducial box |
+| Cryostat | Existing concentric cylindrical layers | Configurable stainless-steel box shell |
+| Optical placement | Four possible PMTs on each endcap plus selectable cylindrical SiPM rows | Fixed face-grid layouts declared in YAML |
+| Coverage variation | Rows of `config/sensor_scan.csv` activate progressively more prebuilt sensors | Change `sensors.layouts` in YAML; use one scan row per fixed box layout |
+| Neutron inelastic behavior | Record the triggering interaction, then abort the event to preserve the elastic-only legacy selection | Continue the complete cascade, including secondary neutron tracks |
+| Primary use | Small tagged-neutron cell and regression workflow | General/DUNE-like active-LAr studies and mixed-channel truth |
+
+Detector construction assigns logical-volume roles used uniformly by stepping,
+scintillation, truth, and analysis code: `active_lar` contributes energy and
+light, `fiducial_lar` is eligible for fiducial selections, `inactive_lar` is
+transport-only LAr, `cryostat` marks structure, `optical_detector` marks sensor
+surfaces, and `external_detector` marks neutron taggers. A logical volume can
+carry more than one role; for example, the nested inner cell is both active and
+fiducial.
+
+`box_cryostat` is a configurable DUNE-like rectangular model, not a hard-coded
+official DUNE module or imported engineering geometry. Dimensions and sensor
+layouts are user inputs. Very large LAr volumes with full optical transport can
+be computationally expensive; start with low event counts and sparse sensor
+layouts.
+
+The default neutron gun starts at `(-300, 0, 0) cm` and points along `+x`.
+Choose box dimensions that leave this source in the intended location. The
+validated example below spans `x = -200...+200 cm`, placing the source 100 cm
+outside its upstream face.
+
+### Complete nested-cell setup
+
+Save this as `config/nested_cell.yaml`. It is a complete configuration for the
+legacy two-cylinder detector, a three-angle external neutron-detector array,
+gamma calibration, the standard optical-coverage scan, and post-analysis.
+
+```yaml
+run:
+  executable: ./LArLightSim
+  build_dir: build-mt
+  output_dir: output/nested_cell_5MeV
+  n_events: 10000
+  n_threads: 4
+  macro_template: macros/template_run.mac
+  generated_macro_dir: macros/generated/nested_cell
+
+detector:
+  model: nested_cell
+
+beam:
+  primary_energy_MeV: 5.0
+
+geometry:
+  inner_lar:
+    radius_cm: 5.0
+    height_cm: 10.0
+  outer_lar:
+    diameter_cm: 35.0
+    height_cm: 70.0
+  neutron_detectors:
+    - label: A0
+      angle_deg: 25.0
+      distance_cm: 100.0
+    - label: A1
+      angle_deg: 60.0
+      distance_cm: 100.0
+    - label: A2
+      angle_deg: 90.0
+      distance_cm: 100.0
+
+optics:
+  lar:
+    scintillation_yield_per_MeV: 51300.0
+    scintillation_yield_scale: 1.0
+    ion_scintillation_yield_scale: 0.3
+    outer_scintillation: false
+    absorption_length_cm: 150.0
+    fast_time_ns: 7.0
+    slow_time_ns: 1500.0
+    fast_fraction: 0.75
+    birks_constant_mm_per_MeV: 0.03
+  tpb:
+    efficiency: 1.0
+  reflector:
+    reflectivity: 0.98
+
+sensors:
+  pmt:
+    side_length_cm: 2.54
+    reflectivity: 0.20
+    response_mode: builtin_curve
+    pde: 0.266
+    top_pde: 0.266
+    bottom_pde: 0.266
+    qe_curve_file: none
+  sipm:
+    tile_size_cm: 0.60
+    reflectivity: 0.40
+    response_mode: builtin_curve
+    pde: 0.402
+    qe_curve_file: none
+
+selection:
+  require_detected: true
+  require_num_pe_positive: true
+  tof_window_ns: [30.0, 40.0]
+  reject_inelastic_sensitive: true
+  reject_external_scatter: false
+
+analysis:
+  make_plots: true
+  gamma_trend_calibration:
+    energies_keV: [122.0, 511.0, 662.0, 1274.0]
+    n_events_per_energy: 2000
+    n_threads: 4
+    source_position_cm: [0.0, 0.0, 0.0]
+    minimum_deposit_fraction: 0.99
+    output_dir: output/gamma_nested_cell
+  neutron_scintillation_correction:
+    enabled: false
+    mode: simulation_native
+    gamma_calibration:
+      slope_photons_per_MeV: 51300.0
+      intercept_photons: 0.0
+```
+
+Run the complete nested-cell workflow:
+
+```bash
+# Fit the gamma/electron-recoil light-yield line.
+python3 scripts/calibrate_gamma_trend.py \
+    --config config/nested_cell.yaml
+
+# Preserve the calibrated master and derive a neutron-energy-specific config.
+cp output/gamma_nested_cell/config_with_gamma_trend.yaml \
+   output/gamma_nested_cell/nested_cell_5MeV.yaml
+
+# All taggers in this example are 100 cm from the LAr target.
+./calcCuts 5 100 \
+    --update-config output/gamma_nested_cell/nested_cell_5MeV.yaml \
+    --output-dir output/nested_cell_5MeV
+
+# Use the standard progressive PMT/SiPM scan.
+python3 scripts/run_scan.py \
+    --config output/gamma_nested_cell/nested_cell_5MeV.yaml \
+    --scan config/sensor_scan.csv
+
+python3 scripts/analyze_event_types.py output/nested_cell_5MeV
+```
+
+In this model, `innerCell` has the `active_lar` and `fiducial_lar` roles.
+`outerCell` is `inactive_lar` when `outer_scintillation: false`. Inelastic
+neutron events are recorded in interaction truth and then intentionally
+aborted, so selected-event analysis remains elastic-only.
+
+### Complete DUNE-like box setup
+
+Save this as `config/dune_like_box.yaml`. The example uses a
+`400 x 400 x 1000 cm` active-LAr box, a 10 cm inset fiducial region, a 1 cm
+steel shell, PMT grids on the endcaps, SiPM grids on the four long faces, and
+external neutron taggers for the selected `numPE`/TOF workflow.
+
+```yaml
+run:
+  executable: ./LArLightSim
+  build_dir: build-mt
+  output_dir: output/dune_like_14MeV
+  n_events: 1000
+  n_threads: 4
+  macro_template: macros/template_run.mac
+  generated_macro_dir: macros/generated/dune_like
+
+detector:
+  model: box_cryostat
+
+beam:
+  primary_energy_MeV: 14.0
+
+geometry:
+  active_lar:
+    dimensions_cm: [400.0, 400.0, 1000.0]
+  fiducial:
+    margin_cm: [10.0, 10.0, 10.0]
+  cryostat:
+    thickness_cm: 1.0
+  neutron_detectors:
+    - label: A0
+      angle_deg: 25.0
+      distance_cm: 300.0
+    - label: A1
+      angle_deg: 60.0
+      distance_cm: 300.0
+    - label: A2
+      angle_deg: 90.0
+      distance_cm: 300.0
+
+optics:
+  lar:
+    scintillation_yield_per_MeV: 51300.0
+    scintillation_yield_scale: 1.0
+    ion_scintillation_yield_scale: 0.3
+    outer_scintillation: false
+    absorption_length_cm: 150.0
+    fast_time_ns: 7.0
+    slow_time_ns: 1500.0
+    fast_fraction: 0.75
+    birks_constant_mm_per_MeV: 0.03
+  tpb:
+    efficiency: 1.0
+  reflector:
+    reflectivity: 0.98
+
+sensors:
+  pmt:
+    side_length_cm: 20.0
+    active_size_cm: [20.0, 20.0]
+    reflectivity: 0.20
+    response_mode: builtin_curve
+    pde: 0.266
+    top_pde: 0.266
+    bottom_pde: 0.266
+    qe_curve_file: none
+  sipm:
+    tile_size_cm: 10.0
+    active_size_cm: [10.0, 10.0]
+    reflectivity: 0.40
+    response_mode: builtin_curve
+    pde: 0.402
+    qe_curve_file: none
+  layouts:
+    - id: long_wall_sipms
+      type: sipm
+      faces: [+x, -x, +y, -y]
+      pattern: grid
+      active_size_cm: [10.0, 10.0]
+      thickness_cm: 0.10
+      pitch_cm: [100.0, 100.0]
+      edge_clearance_cm: 25.0
+      inset_cm: 0.10
+    - id: endcap_pmts
+      type: pmt
+      faces: [+z, -z]
+      pattern: grid
+      active_size_cm: [20.0, 20.0]
+      thickness_cm: 0.10
+      pitch_cm: [100.0, 100.0]
+      edge_clearance_cm: 25.0
+      inset_cm: 0.10
+
+selection:
+  require_detected: true
+  require_num_pe_positive: true
+  tof_window_ns: [45.0, 60.0]
+  reject_inelastic_sensitive: false
+  reject_external_scatter: false
+
+analysis:
+  make_plots: true
+  gamma_trend_calibration:
+    energies_keV: [122.0, 511.0, 662.0, 1274.0]
+    n_events_per_energy: 2000
+    n_threads: 4
+    source_position_cm: [0.0, 0.0, 0.0]
+    minimum_deposit_fraction: 0.99
+    output_dir: output/gamma_dune_like
+  neutron_scintillation_correction:
+    enabled: false
+    mode: simulation_native
+    gamma_calibration:
+      slope_photons_per_MeV: 51300.0
+      intercept_photons: 0.0
+```
+
+Box sensor layouts are constructed before the run and all declared tiles are
+active. The legacy `top_pmts`, `bottom_pmts`, and `sipm_rows` scan columns do
+not enable or disable box tiles. For this fixed layout, save a one-row scan as
+`config/dune_like_scan.csv`:
+
+```csv
+config_id,top_pmts,bottom_pmts,sipm_rows,label
+DUNE00,0,0,0,dune_like_fixed_layout
+```
+
+Run the complete DUNE-like workflow:
+
+```bash
+python3 scripts/calibrate_gamma_trend.py \
+    --config config/dune_like_box.yaml
+
+cp output/gamma_dune_like/config_with_gamma_trend.yaml \
+   output/gamma_dune_like/dune_like_14MeV.yaml
+
+# All external taggers in this example are 300 cm from the target.
+./calcCuts 14 300 \
+    --update-config output/gamma_dune_like/dune_like_14MeV.yaml \
+    --output-dir output/dune_like_14MeV
+
+python3 scripts/run_scan.py \
+    --config output/gamma_dune_like/dune_like_14MeV.yaml \
+    --scan config/dune_like_scan.csv
+
+python3 scripts/analyze_event_types.py output/dune_like_14MeV
+```
+
+The box model never applies the legacy inelastic-event abort. Its interaction
+truth and particle-class summary therefore include the complete inelastic
+cascade and secondary-neutron transport. To study uncut physics without
+external taggers, set `geometry.neutron_detectors: []`; the interaction and
+particle summaries will still contain every event, but the cut-selected
+`numPE_*.csv` will have no data rows because its writer requires an external
+neutron detection.
+
+### Box layout field reference
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Stable layout name containing letters, numbers, `_`, or `-`. |
+| `type` | `pmt` or `sipm`; selects the corresponding response model. |
+| `faces` | One or more of `+x`, `-x`, `+y`, `-y`, `+z`, `-z`. |
+| `pattern` | Currently `grid`. |
+| `active_size_cm` | Two-dimensional active footprint of one tile. |
+| `thickness_cm` | Tile depth inside the active-LAr host volume. |
+| `pitch_cm` | Center-to-center spacing along the two local face axes; each pitch must be at least the corresponding active size. |
+| `edge_clearance_cm` | Minimum unused border around each selected face. |
+| `inset_cm` | Offset inward from the active-LAr boundary. With a separate fiducial box, its margin on that face must be at least `thickness_cm + inset_cm`. |
+
+### Sensor response modes
+
+Both `sensors.pmt` and `sensors.sipm` accept the same response modes:
+
+| Mode | Behavior |
+| --- | --- |
+| `flat` | Constant detection efficiency set by `pde` (or PMT `top_pde`/`bottom_pde`). |
+| `builtin_curve` | Built-in wavelength response rescaled so its peak equals the requested PDE. |
+| `builtin_curve_raw` | Built-in wavelength response used without peak rescaling. |
+| `csv_curve` | User CSV response rescaled to the requested peak PDE. |
+| `csv_curve_raw` | User CSV response used as an absolute efficiency curve. |
+
+For CSV modes, set `qe_curve_file` to a file containing either
+`wavelength_nm,qe` or `energy_eV,qe`; `qe` may be a fraction or percentage.
+Reflectivity remains independently configurable. The physical PDE is converted
+to Geant4 boundary efficiency so reflectivity and detection retain the intended
+probabilities.
+
+At simulation time, the legacy `numPE_*.csv` writer always requires an
+external neutron detection, positive PE, and a TOF inside
+`selection.tof_window_ns`. The other `selection` booleans are consumed by the
+older `scripts/analyze_outputs.py` workflow; they do not loosen or tighten the
+Geant4 CSV writer. Uncut interaction and particle summaries are independent of
+all these selected-event conditions.
+
 ## Sensor coverage scan
 
-The sensor scan CSV controls which optical configurations are simulated:
+For `nested_cell`, the sensor scan CSV controls which of the prebuilt top PMTs,
+bottom PMTs, and cylindrical SiPM rows are active:
 
 ```text
 config/sensor_scan.csv
 ```
 
-Regenerate it after editing `scripts/generate_sensor_scan.py`:
+Regenerate the standard nested-cell scan after editing
+`scripts/generate_sensor_scan.py`:
 
 ```bash
 python3 scripts/generate_sensor_scan.py
@@ -169,6 +543,14 @@ python3 scripts/run_scan.py \
 macros do not control a later run. The current `run.n_events` value is rendered
 as `/run/beamOn` each time.
 
+For `box_cryostat`, sensor geometry comes entirely from `sensors.layouts` and
+all declared tiles are active. Use a one-row scan CSV for each fixed YAML
+layout, as shown in the DUNE-like example. The row's `config_id` names
+`neutron_interactions_<config_id>.csv` and
+`particle_class_summary_<config_id>.csv`; its three legacy sensor-count fields
+remain in the selected-event filename but do not control box tiles. To compare
+several box coverages, use separate YAML/layout and output-directory pairs.
+
 ## Gamma calibration
 
 ### Purpose
@@ -187,8 +569,9 @@ During calibration:
 - the primary is changed to `gamma`;
 - the source position comes from
   `analysis.gamma_trend_calibration.source_position_cm`;
-- scintillation is enabled in both inner and outer LAr;
-- energy deposition is accumulated across inner and outer LAr;
+- all relevant LAr is active (`nested_cell` enables both cylinders; the box
+  uses its active-LAr volume);
+- energy deposition is accumulated across all active LAr;
 - original LAr scintillation photons are counted once at creation;
 - TPB wavelength-shifted photons are excluded from the production count;
 - `numPE` is not used by the calibration;
@@ -230,16 +613,19 @@ optics:
 
 Geant4 11 makes its built-in particle-dependent scintillation mode mutually
 exclusive with Birks saturation. This framework therefore retains the normal
-Birks calculation and statistically keeps each LAr scintillation photon from
-an ion recoil with probability `ion_scintillation_yield_scale`. This occurs
-before photon transport and sensor detection. Gamma-induced electron-recoil
-photons are not thinned.
+Birks calculation and statistically keeps each LAr scintillation photon whose
+parent is a neutron, alpha, or heavier nuclear recoil with probability
+`ion_scintillation_yield_scale`. This preserves the legacy proton behavior and
+occurs before photon transport and sensor detection. Gamma-induced
+electron-recoil photons are not thinned.
 
-Outer-LAr scintillation is disabled for neutron runs, so neutron `numPhotons`,
-`eDep`, and `numPE` describe inner-cell scintillation only. Gamma calibration
-enables both identical LAr volumes and fits total created photons against total
-deposited energy; that material light-yield relation is then evaluated at the
-neutron event's inner-cell `eDep`.
+For the nested neutron model, outer-LAr scintillation is normally disabled, so
+`numPhotons`, `eDep`, and `numPE` describe the inner cell. Gamma calibration
+temporarily enables both nested LAr cylinders. For the box model, these values
+describe all volumes carrying the `active_lar` role. In either geometry, the
+calibration fits total created photons against active-LAr deposited energy and
+the neutron correction evaluates that relation using the event's active-LAr
+`eDep`.
 
 ### Run
 
@@ -435,21 +821,43 @@ field. For `nested_cell`, a rejected inelastic event's summary contains only
 energy and light produced before its intentional abort; `box_cryostat`
 summaries cover the complete cascade.
 
+### Neutron-run output reference
+
+| Output | Scope and purpose |
+| --- | --- |
+| `numPE_<top>_topPMTs_<bottom>_botPMTs_<rows>_SiPMRows.csv` | Legacy selected-event stream: external neutron detected, positive PE, and TOF inside the configured window. Contains PE, produced photons, active-LAr deposit, detector label, and legacy interaction counters. |
+| `neutron_interactions_<config_id>.csv` | Uncut interaction-level truth for primary and secondary neutron tracks. Events with no recordable neutron interaction naturally have no row. |
+| `particle_class_summary_<config_id>.csv` | One uncut row per event with total and per-particle-class active-LAr energy/light. |
+| `scan_metadata.json` | Exact macro/config values for every scan row; also maps a selected-event filename back to its interaction-truth `config_id`. |
+| `config_used.yaml` | Archived YAML used by the run. |
+| `sensor_scan_used.csv` | Archived sensor scan used by the run. |
+
+The event ID is the join key within one configuration. Multithreaded output can
+be in completion order, so join or sort by event ID rather than assuming row
+order. Across several scan configurations, use both `config_id` (or source
+filename) and event ID because Geant4 event IDs restart for every macro.
+
 ## Neutron scintillation correction
 
 For newly simulated data, gamma calibration enables this normalization:
 
 ```text
-E_dep               = innerCell energy deposit from the event CSV
+E_dep               = active-LAr energy deposit from the event CSV
 N_ph,expected,gamma = a * E_dep,MeV + b
 correction_factor   = N_ph,expected,gamma / N_ph,simulated
 numPE_corrected     = numPE_raw * correction_factor
 ```
 
-This is evaluated separately for every event using inner-cell `eDep`,
+This is evaluated separately for every event using active-LAr `eDep`,
 `numPhotons`, and `numPE`. Only after each event is corrected are values grouped
 and averaged for plots. The formula does not multiply by Leff because the `0.3`
 ion efficiency was already sampled during photon production.
+
+For complete box-model cascades, an event can contain electron, gamma, neutron,
+and ion deposits simultaneously. The global correction above normalizes the
+simulated produced-light count; it does not reclassify a mixed cascade as a
+single nuclear recoil. Use `particle_class_summary_<config_id>.csv` together
+with interaction topology for particle- or channel-specific yield studies.
 
 ### Legacy post-analysis correction
 
@@ -457,7 +865,7 @@ The previous deterministic correction is retained only for reproducing older
 runs:
 
 ```text
-E_dep               = innerCell energy deposit from the event CSV
+E_dep               = active-LAr energy deposit from the event CSV
 N_ph,expected,gamma = a * E_dep,MeV + b
 N_ph,expected,NR    = N_ph,expected,gamma * Leff(E_dep)
 correction_factor   = N_ph,expected,NR / N_ph,simulated
@@ -713,7 +1121,7 @@ source ~/.bashrc
 | `larsim-event-types` | Calculate event-topology frequencies for one or more run directories. |
 | `larsim-test` | Start the visualization/test macro with one thread. |
 
-## Practical end-to-end example
+## Helper-based nested-cell example
 
 ```bash
 # 1. Enter environment and build after source-code changes
