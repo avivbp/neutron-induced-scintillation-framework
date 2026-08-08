@@ -54,6 +54,7 @@ namespace {
   std::atomic<G4long> gammaPrimariesCompleted{0};
   std::atomic<bool> interactionCsvWarningPrinted{false};
   std::atomic<bool> particleBookkeepingCsvWarningPrinted{false};
+  std::atomic<bool> duneEventResponseCsvWarningPrinted{false};
 
   // One set of files *per worker thread* (no mutex required).
   thread_local std::unique_ptr<std::ofstream> tls_hits;
@@ -151,6 +152,7 @@ void EventAction::BeginOfEventAction(const G4Event* evt )
  fNeutronInteractions.clear();
  fParticleBookkeeping = EventParticleBookkeeping{};
  fParticleBookkeeping.eventId = evt->GetEventID();
+ fOpticalPhotonOrigins.clear();
  ClearWLSDeDupe();
  //ClearBornInnerScint();
  //ClearSeenUV();
@@ -192,6 +194,18 @@ void EventAction::EndOfEventAction(const G4Event* evt)
       !particleBookkeepingCsvWarningPrinted.exchange(true)) {
       G4cerr << "[particle bookkeeping] could not append "
             << particleBookkeepingFilename << G4endl;
+  }
+  if (det->GetDetectorModel() ==
+      DetectorConstruction::DetectorModel::BoxCryostat) {
+    const auto responseFilename =
+        DuneEventResponseCsvFilename(det->GetRunLabel());
+    if (!AppendDuneEventResponseCsv(
+            fParticleBookkeeping, numElasticSensitive, numInelastic,
+            numInelasticSensitive, nCapture, responseFilename) &&
+        !duneEventResponseCsvWarningPrinted.exchange(true)) {
+      G4cerr << "[DUNE event response] could not append "
+            << responseFilename << G4endl;
+    }
   }
 
   //std::cout << "end of eventAction number: " << eventID << std::endl;
@@ -387,6 +401,23 @@ void EventAction::AddActiveLArScintillationPhoton(
   const auto index = static_cast<std::size_t>(particleClass);
   ++fParticleBookkeeping.scintillationPhotons[index];
   ++numPhotons;
+}
+
+void EventAction::RegisterOpticalPhotonOrigin(
+    G4int trackId, ParticleClass particleClass)
+{
+  fOpticalPhotonOrigins[trackId] = particleClass;
+}
+
+void EventAction::AddDetectedPhotoelectron(G4int opticalTrackId)
+{
+  const auto origin = fOpticalPhotonOrigins.find(opticalTrackId);
+  const auto particleClass =
+      origin != fOpticalPhotonOrigins.end() ? origin->second
+                                            : ParticleClass::Other;
+  ++fParticleBookkeeping.detectedPhotoelectrons[
+      static_cast<std::size_t>(particleClass)];
+  ++numPE;
 }
 
 void EventAction::UpdateNeutronInteractionSummary()

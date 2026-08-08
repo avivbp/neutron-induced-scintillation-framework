@@ -176,6 +176,9 @@ public:
     void AddActiveLArEnergyDeposit(ParticleClass particleClass,
                                    G4double energyDepositMeV);
     void AddActiveLArScintillationPhoton(ParticleClass particleClass);
+    void RegisterOpticalPhotonOrigin(G4int trackId,
+                                     ParticleClass particleClass);
+    void AddDetectedPhotoelectron(G4int opticalTrackId);
  
     inline void BufferHitRow(const std::vector<std::string>& fields) {
     for (size_t i=0;i<fields.size();++i) { if(i) buf_hits<<','; buf_hits<<fields[i]; }
@@ -214,6 +217,7 @@ public:
 
     std::vector<NeutronInteractionRecord> fNeutronInteractions;
     EventParticleBookkeeping fParticleBookkeeping;
+    std::unordered_map<G4int, ParticleClass> fOpticalPhotonOrigins;
     std::unordered_set<G4int> fSeenUV; // TrackIDs of UV photons already counted
     G4double fEnergyDeposit;
     G4double fTrakLenCharged, fTrakLenNeutral;

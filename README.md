@@ -3,9 +3,9 @@
 A Geant4 and Python workflow for simulating neutron-induced scintillation in
 liquid argon (LAr). It supports both the original nested cylindrical cell and a
 generic DUNE-like box cryostat, configurable optical sensors and external
-neutron taggers, gamma/electron-recoil light-yield calibration, corrected
+neutron taggers, gamma/electron-recoil light-yield calibration, recoil-resolved
 photoelectron analysis, uncut neutron-interaction truth, particle-resolved
-energy/light bookkeeping, and channel-aware event topology analysis.
+energy/light/PE bookkeeping, and channel-aware event topology analysis.
 
 ## Capabilities
 
@@ -19,7 +19,7 @@ energy/light bookkeeping, and channel-aware event topology analysis.
 | Neutron tagging | Any number of labeled external neutron detectors with configurable angle and distance, plus a configurable TOF window. |
 | Interaction transport | The legacy nested cell intentionally stops an event at its first neutron-inelastic interaction. The box cryostat retains elastic, inelastic, capture, fission, secondary-neutron, and mixed cascades. |
 | Truth output | Uncut interaction records for primary and secondary neutrons, including volume roles, process/channel, kinematics, local deposit, and produced secondaries. |
-| Signal bookkeeping | Per-event active-LAr energy deposition and produced scintillation photons split by primary neutron, secondary neutron, gamma, electron/positron, proton, alpha, nuclear recoil, and other. |
+| Signal bookkeeping | Per-event active-LAr energy deposition, produced scintillation photons, and detected PE split by primary neutron, secondary neutron, gamma, electron/positron, proton, alpha, nuclear recoil, and other. Optical origin survives wavelength shifting. |
 | Calibration and analysis | Multithreaded gamma calibration, event-level neutron light normalization, coverage-versus-PE plots, detector-angle plots, bootstrap/SEM uncertainties, and truth-defined topology frequencies. |
 | Reproducibility | Generated macros, archived YAML/scan inputs, per-configuration run labels, deterministic analysis seeds, and thread-safe CSV writers. |
 
@@ -47,7 +47,8 @@ output/gamma_calibration/config_with_gamma_trend.yaml
 output/<neutron-run>/numPE_*.csv
         |
         +--> neutron_interactions_<config_id>.csv   uncut interaction truth
-        +--> particle_class_summary_<config_id>.csv uncut energy/light truth
+        +--> particle_class_summary_<config_id>.csv uncut energy/light/PE truth
+        +--> dune_event_response_<config_id>.csv    uncut ER/NR optical signal
         +--> analyze_money_plot.py                  corrected PE summaries
         +--> analyze_event_types.py                 topology frequencies
 ```
@@ -60,8 +61,8 @@ The normal sequence is:
 3. Run the gamma calibration.
 4. Use the generated `config_with_gamma_trend.yaml` for neutron simulation and
    post-analysis.
-5. For each neutron energy, calculate the correct TOF window and use a distinct
-   output directory.
+5. For tagged `nested_cell` runs, calculate the correct TOF window. Standalone
+   `box_cryostat` runs with no external taggers skip this step.
 6. Generate the sensor scan, run the neutron simulation, and inspect corrected
    PE and event-topology results.
 
@@ -317,16 +318,18 @@ aborted, so selected-event analysis remains elastic-only.
 
 Save this as `config/dune_like_box.yaml`. The example uses a
 `400 x 400 x 1000 cm` active-LAr box, a 10 cm inset fiducial region, a 1 cm
-steel shell, PMT grids on the endcaps, SiPM grids on the four long faces, and
-external neutron taggers for the selected `numPE`/TOF workflow.
+steel shell, PMT grids on the endcaps, and SiPM grids on the four long faces.
+It intentionally has no external neutron taggers or TOF selection: the optical
+response is the detector signal. A ready-to-run copy is checked in at
+`config/dune_like_box.yaml`.
 
 ```yaml
 run:
   executable: ./LArLightSim
   build_dir: build-mt
   output_dir: output/dune_like_14MeV
-  n_events: 1000
-  n_threads: 4
+  n_events: 10
+  n_threads: 1
   macro_template: macros/template_run.mac
   generated_macro_dir: macros/generated/dune_like
 
@@ -343,16 +346,7 @@ geometry:
     margin_cm: [10.0, 10.0, 10.0]
   cryostat:
     thickness_cm: 1.0
-  neutron_detectors:
-    - label: A0
-      angle_deg: 25.0
-      distance_cm: 300.0
-    - label: A1
-      angle_deg: 60.0
-      distance_cm: 300.0
-    - label: A2
-      angle_deg: 90.0
-      distance_cm: 300.0
+  neutron_detectors: []
 
 optics:
   lar:
@@ -407,13 +401,6 @@ sensors:
       edge_clearance_cm: 25.0
       inset_cm: 0.10
 
-selection:
-  require_detected: true
-  require_num_pe_positive: true
-  tof_window_ns: [45.0, 60.0]
-  reject_inelastic_sensitive: false
-  reject_external_scatter: false
-
 analysis:
   make_plots: true
   gamma_trend_calibration:
@@ -444,31 +431,27 @@ DUNE00,0,0,0,dune_like_fixed_layout
 Run the complete DUNE-like workflow:
 
 ```bash
+# Fast uncalibrated smoke run: 10 events, one thread, no tagger or TOF.
+python3 scripts/run_scan.py \
+    --config config/dune_like_box.yaml \
+    --scan config/dune_like_scan.csv \
+    --build
+
+# Optional gamma normalization for a larger analysis run.
 python3 scripts/calibrate_gamma_trend.py \
     --config config/dune_like_box.yaml
 
-cp output/gamma_dune_like/config_with_gamma_trend.yaml \
-   output/gamma_dune_like/dune_like_14MeV.yaml
-
-# All external taggers in this example are 300 cm from the target.
-./calcCuts 14 300 \
-    --update-config output/gamma_dune_like/dune_like_14MeV.yaml \
-    --output-dir output/dune_like_14MeV
-
 python3 scripts/run_scan.py \
-    --config output/gamma_dune_like/dune_like_14MeV.yaml \
+    --config output/gamma_dune_like/config_with_gamma_trend.yaml \
     --scan config/dune_like_scan.csv
-
-python3 scripts/analyze_event_types.py output/dune_like_14MeV
 ```
 
 The box model never applies the legacy inelastic-event abort. Its interaction
 truth and particle-class summary therefore include the complete inelastic
-cascade and secondary-neutron transport. To study uncut physics without
-external taggers, set `geometry.neutron_detectors: []`; the interaction and
-particle summaries will still contain every event, but the cut-selected
-`numPE_*.csv` will have no data rows because its writer requires an external
-neutron detection.
+cascade and secondary-neutron transport. `dune_event_response_DUNE00.csv`
+contains one row for every event regardless of PE, interaction type, external
+tagger, or TOF. `run_scan.py` summarizes it with
+`scripts/analyze_dune_response.py`.
 
 ### Box layout field reference
 
@@ -506,8 +489,9 @@ At simulation time, the legacy `numPE_*.csv` writer always requires an
 external neutron detection, positive PE, and a TOF inside
 `selection.tof_window_ns`. The other `selection` booleans are consumed by the
 older `scripts/analyze_outputs.py` workflow; they do not loosen or tighten the
-Geant4 CSV writer. Uncut interaction and particle summaries are independent of
-all these selected-event conditions.
+Geant4 CSV writer. The box-specific `dune_event_response_<config_id>.csv` and
+the uncut interaction and particle summaries are independent of all these
+selected-event conditions.
 
 ## Sensor coverage scan
 
@@ -805,19 +789,20 @@ the first neutron-inelastic interaction (the triggering interaction itself is
 still recorded). The general `box_cryostat` model allows the complete
 inelastic cascade and secondary-neutron tracks to continue.
 
-Every event also receives a particle-resolved energy and scintillation summary
+Every event also receives a particle-resolved energy, scintillation, and PE summary
 in `particle_class_summary_<config_id>.csv`, without the detected-neutron,
 positive-PE, or TOF cuts used for the legacy event CSV. Energy deposited in
-active LAr and scintillation photons produced there are split into primary
+active LAr, scintillation photons produced there, and detected PE are split into primary
 neutron, secondary neutron, gamma, electron/positron, proton, alpha, nuclear
 recoil, and other classes. The total columns are the sums of those classes.
 In multithreaded runs, rows can appear in completion order rather than event-ID
 order.
 
 Scintillation photons are attributed to their parent particle after the
-configured ion-yield thinning and before wavelength shifting, transport loss,
-or sensor response. This preserves the meaning of the legacy `numPhotons`
-field. For `nested_cell`, a rejected inelastic event's summary contains only
+configured ion-yield thinning. That origin is propagated from the original VUV
+photon to its wavelength-shifted descendants, allowing sensor detections to be
+assigned to the same particle class. This preserves the meaning of the legacy
+`numPhotons` field. For `nested_cell`, a rejected inelastic event's summary contains only
 energy and light produced before its intentional abort; `box_cryostat`
 summaries cover the complete cascade.
 
@@ -826,8 +811,9 @@ summaries cover the complete cascade.
 | Output | Scope and purpose |
 | --- | --- |
 | `numPE_<top>_topPMTs_<bottom>_botPMTs_<rows>_SiPMRows.csv` | Legacy selected-event stream: external neutron detected, positive PE, and TOF inside the configured window. Contains PE, produced photons, active-LAr deposit, detector label, and legacy interaction counters. |
+| `dune_event_response_<config_id>.csv` | One uncut box-model row per event with total, electronic-recoil, nuclear-recoil, and other PE, produced photons, deposited energy, and interaction counts. Requires neither a tagger nor TOF. |
 | `neutron_interactions_<config_id>.csv` | Uncut interaction-level truth for primary and secondary neutron tracks. Events with no recordable neutron interaction naturally have no row. |
-| `particle_class_summary_<config_id>.csv` | One uncut row per event with total and per-particle-class active-LAr energy/light. |
+| `particle_class_summary_<config_id>.csv` | One uncut row per event with total and per-particle-class active-LAr energy, produced light, and detected PE. |
 | `scan_metadata.json` | Exact macro/config values for every scan row; also maps a selected-event filename back to its interaction-truth `config_id`. |
 | `config_used.yaml` | Archived YAML used by the run. |
 | `sensor_scan_used.csv` | Archived sensor scan used by the run. |
@@ -839,25 +825,31 @@ filename) and event ID because Geant4 event IDs restart for every macro.
 
 ## Neutron scintillation correction
 
-For newly simulated data, gamma calibration enables this normalization:
+For newly simulated box-model data, gamma calibration normalizes only the
+nuclear-recoil optical component:
 
 ```text
-E_dep               = active-LAr energy deposit from the event CSV
-N_ph,expected,gamma = a * E_dep,MeV + b
-correction_factor   = N_ph,expected,gamma / N_ph,simulated
-numPE_corrected     = numPE_raw * correction_factor
+N_ph,expected,gamma = a * E_dep,NR,MeV + b
+NR_correction       = N_ph,expected,gamma / N_ph,NR,simulated
+numPE_NR,corrected  = numPE_NR,raw * NR_correction
+numPE_total,corr    = numPE_ER,raw + numPE_other,raw + numPE_NR,corrected
 ```
 
-This is evaluated separately for every event using active-LAr `eDep`,
-`numPhotons`, and `numPE`. Only after each event is corrected are values grouped
-and averaged for plots. The formula does not multiply by Leff because the `0.3`
-ion efficiency was already sampled during photon production.
+Electronic-recoil and other-origin PE remain untouched. This is evaluated
+separately for every event using the recoil-resolved columns in
+`dune_event_response_<config_id>.csv`. The formula does not multiply by Leff
+because the configured ion efficiency was already sampled during photon
+production. Events without NR light retain their raw total PE.
 
-For complete box-model cascades, an event can contain electron, gamma, neutron,
-and ion deposits simultaneously. The global correction above normalizes the
-simulated produced-light count; it does not reclassify a mixed cascade as a
-single nuclear recoil. Use `particle_class_summary_<config_id>.csv` together
-with interaction topology for particle- or channel-specific yield studies.
+The nuclear-recoil group matches the particle classes using the configured ion
+scintillation-yield scale: primary/secondary neutrons, alpha particles, and
+nuclear recoil ions. In practice, scintillation is created by charged tracks.
+Gamma and electron/positron origins form the electronic-recoil group. Proton
+and unidentified origins are retained explicitly in `other` to preserve the
+historical proton-yield policy and make the component sum auditable.
+
+Legacy selected-event CSVs do not contain recoil-split PE, so their correction
+continues to normalize the whole event as before.
 
 ### Legacy post-analysis correction
 

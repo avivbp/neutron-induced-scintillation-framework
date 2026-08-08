@@ -10,6 +10,7 @@ import argparse
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from config_tools import flatten_for_template, read_scan_csv, read_yaml, render_template, write_json
@@ -76,8 +77,16 @@ def main() -> None:
     write_json(outdir / "scan_metadata.json", metadata)
 
     if not args.dry_run and config.get("analysis", {}).get("make_plots", True):
+        detector_model = str(
+            config.get("detector", {}).get("model", "nested_cell")
+        ).lower()
+        analysis_script = (
+            "scripts/analyze_dune_response.py"
+            if detector_model == "box_cryostat"
+            else "scripts/analyze_money_plot.py"
+        )
         run([
-            "python3", "scripts/analyze_money_plot.py",
+            sys.executable, analysis_script,
             "--config", args.config,
             "--input-dir", str(outdir),
             "--output-dir", str(outdir),

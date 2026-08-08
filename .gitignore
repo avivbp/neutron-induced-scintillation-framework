@@ -22,6 +22,7 @@ outputs/
 *.h5
 *.hdf5
 *.csv
+!config/dune_like_scan.csv
 *.log
 
 # Python

@@ -65,21 +65,37 @@ G4ClassificationOfNewTrack
 StackingAction::ClassifyNewTrack(const G4Track* aTrack)
 {
   const auto* definition = aTrack->GetDefinition();
-  const auto particleClass = ClassifyParticle(
+  auto particleClass = ClassifyParticle(
       definition->GetParticleName(), definition->GetParticleType(),
       definition->GetAtomicNumber(), definition->GetAtomicMass(),
       aTrack->GetParentID());
+  const G4bool isOptical =
+      definition == G4OpticalPhoton::OpticalPhotonDefinition();
+  const auto* creator = aTrack->GetCreatorProcess();
+  const auto parent = fParticleClassByTrack.find(aTrack->GetParentID());
+  if (isOptical && parent != fParticleClassByTrack.end()) {
+    // Direct scintillation photons inherit the depositing particle class.
+    // Wavelength-shifted photons inherit the original optical photon's class,
+    // preserving the recoil origin all the way to sensor detection.
+    const auto creatorName = creator ? creator->GetProcessName() : "";
+    if (creatorName == "Scintillation" || creatorName == "OpWLS" ||
+        creatorName == "OpWLS2") {
+      particleClass = parent->second;
+    }
+  }
   fParticleClassByTrack[aTrack->GetTrackID()] = particleClass;
+  if (isOptical) {
+    fEventAction->RegisterOpticalPhotonOrigin(aTrack->GetTrackID(),
+                                              particleClass);
+  }
 
   // Geant4 11 makes its built-in particle-dependent scintillation and Birks
   // saturation mutually exclusive. Preserve the fitted Birks response, then
   // Bernoulli-thin only LAr scintillation photons whose parent was an ion.
   // For a Poisson photon population this produces the correct Poisson mean and
   // variance at Leff*mean before any optical transport or detector response.
-  if (definition == G4OpticalPhoton::OpticalPhotonDefinition() &&
-      aTrack->GetCreatorProcess() &&
-      aTrack->GetCreatorProcess()->GetProcessName() == "Scintillation") {
-    const auto parent = fParticleClassByTrack.find(aTrack->GetParentID());
+  if (isOptical && creator &&
+      creator->GetProcessName() == "Scintillation") {
     // Newly stacked secondaries have a current touchable before Geant4 fills
     // the cached logical volume at the vertex.
     const auto* physicalVolume = aTrack->GetVolume();

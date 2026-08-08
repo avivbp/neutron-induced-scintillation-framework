@@ -26,7 +26,7 @@
 /det/setNeutronDetectors {{neutron_detector_config}}
 /det/setPMTSideCm {{pmt_side_length_cm}}
 /det/setSiPMTileCm {{sipm_tile_size_cm}}
-/det/setTOFWindowNs {{tof_window_ns}}
+{{tof_window_command}}
 /det/setPrimaryEnergyMeV {{primary_energy_MeV}}
 
 /det/setAbsLengthCm {{lar_absorption_length_cm}}

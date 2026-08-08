@@ -109,6 +109,15 @@ void RunAction::BeginOfRunAction(const G4Run*)
           G4cerr << "[particle bookkeeping] could not initialize "
                 << particleBookkeepingFilename << G4endl;
       }
+      if (fDetector->GetDetectorModel() ==
+          DetectorConstruction::DetectorModel::BoxCryostat) {
+          const auto responseFilename =
+              DuneEventResponseCsvFilename(fDetector->GetRunLabel());
+          if (!InitializeDuneEventResponseCsv(responseFilename)) {
+              G4cerr << "[DUNE event response] could not initialize "
+                    << responseFilename << G4endl;
+          }
+      }
       G4Random::showEngineStatus();
       auto* pm = G4Electron::Electron()->GetProcessManager();
       auto* p  = pm ? pm->GetProcess("Cerenkov") : nullptr;

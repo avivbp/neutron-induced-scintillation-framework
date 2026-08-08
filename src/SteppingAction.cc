@@ -434,7 +434,7 @@ std::cout << "after 2B)" << std::endl;
 
                 if (optSurf && ((optSurf->GetName().rfind("SiPM",0) == 0) || (optSurf->GetName().rfind("PMT",0) == 0))) {
                     if (DETECTION){
-                        fEventAction->numPE += 1;
+                        fEventAction->AddDetectedPhotoelectron(trackID);
                         //std::cout << "optical surface : " << optSurf->GetName() << std::endl;
                         //std::cout << "num PE = " << fEventAction->numPE << std::endl;
                         track->SetTrackStatus(fStopAndKill);

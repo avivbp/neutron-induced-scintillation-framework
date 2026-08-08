@@ -1,0 +1,2 @@
+config_id,top_pmts,bottom_pmts,sipm_rows,label
+DUNE00,0,0,0,dune_like_fixed_layout

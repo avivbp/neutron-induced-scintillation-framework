@@ -66,6 +66,7 @@ class ConfigToolsTest(unittest.TestCase):
         self.assertIn("/det/setRunLabel box", macro)
         self.assertIn("/det/setDetectorModel box_cryostat", macro)
         self.assertIn(f"/det/setBoxSensorLayouts {expected}", macro)
+        self.assertNotIn("/det/setTOFWindowNs", macro)
         self.assertNotIn("{{", macro)
         self.assertAlmostEqual(values["active_area_cm2"], 9600.0)
         self.assertAlmostEqual(values["total_inner_surface_cm2"], 35200.0)
@@ -80,6 +81,9 @@ class ConfigToolsTest(unittest.TestCase):
         values = flatten_for_template({}, {})
         self.assertEqual(values["detector_model"], "nested_cell")
         self.assertEqual(values["box_sensor_layouts"], "none")
+        self.assertEqual(
+            values["tof_window_command"], "/det/setTOFWindowNs 40 50"
+        )
 
     def test_empty_neutron_detector_list_renders_none(self):
         values = flatten_for_template(self.config, {})

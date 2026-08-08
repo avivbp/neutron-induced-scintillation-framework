@@ -1,0 +1,92 @@
+run:
+  executable: ./LArLightSim
+  build_dir: build-mt
+  output_dir: output/dune_like_14MeV
+  n_events: 10
+  n_threads: 1
+  macro_template: macros/template_run.mac
+  generated_macro_dir: macros/generated/dune_like
+
+detector:
+  model: box_cryostat
+
+beam:
+  primary_energy_MeV: 14.0
+
+geometry:
+  active_lar:
+    dimensions_cm: [400.0, 400.0, 1000.0]
+  fiducial:
+    margin_cm: [10.0, 10.0, 10.0]
+  cryostat:
+    thickness_cm: 1.0
+  neutron_detectors: []
+
+optics:
+  lar:
+    scintillation_yield_per_MeV: 51300.0
+    scintillation_yield_scale: 1.0
+    ion_scintillation_yield_scale: 0.3
+    outer_scintillation: false
+    absorption_length_cm: 150.0
+    fast_time_ns: 7.0
+    slow_time_ns: 1500.0
+    fast_fraction: 0.75
+    birks_constant_mm_per_MeV: 0.03
+  tpb:
+    efficiency: 1.0
+  reflector:
+    reflectivity: 0.98
+
+sensors:
+  pmt:
+    side_length_cm: 20.0
+    active_size_cm: [20.0, 20.0]
+    reflectivity: 0.20
+    response_mode: builtin_curve
+    pde: 0.266
+    top_pde: 0.266
+    bottom_pde: 0.266
+    qe_curve_file: none
+  sipm:
+    tile_size_cm: 10.0
+    active_size_cm: [10.0, 10.0]
+    reflectivity: 0.40
+    response_mode: builtin_curve
+    pde: 0.402
+    qe_curve_file: none
+  layouts:
+    - id: long_wall_sipms
+      type: sipm
+      faces: [+x, -x, +y, -y]
+      pattern: grid
+      active_size_cm: [10.0, 10.0]
+      thickness_cm: 0.10
+      pitch_cm: [100.0, 100.0]
+      edge_clearance_cm: 25.0
+      inset_cm: 0.10
+    - id: endcap_pmts
+      type: pmt
+      faces: [+z, -z]
+      pattern: grid
+      active_size_cm: [20.0, 20.0]
+      thickness_cm: 0.10
+      pitch_cm: [100.0, 100.0]
+      edge_clearance_cm: 25.0
+      inset_cm: 0.10
+
+analysis:
+  make_plots: true
+  gamma_trend_calibration:
+    energies_keV: [122.0, 511.0, 662.0, 1274.0]
+    n_events_per_energy: 2000
+    n_threads: 4
+    source_position_cm: [0.0, 0.0, 0.0]
+    minimum_deposit_fraction: 0.99
+    output_dir: output/gamma_dune_like
+  neutron_scintillation_correction:
+    enabled: false
+    mode: simulation_native
+    gamma_calibration:
+      slope_photons_per_MeV: 51300.0
+      intercept_photons: 0.0

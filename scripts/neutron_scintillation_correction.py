@@ -125,11 +125,22 @@ def apply_correction(
     pe_column: str,
 ) -> tuple[pd.DataFrame, CorrectionInfo]:
     """Return a copy of *frame* with raw, expected, and corrected PE columns."""
-    for column in ("numPhotons", "eDep"):
-        if column not in frame.columns:
-            raise ValueError(
-                f"neutron scintillation correction requires CSV column {column!r}"
-            )
+    split_columns = {
+        "electronic_recoil_num_pe",
+        "nuclear_recoil_num_pe",
+        "other_num_pe",
+        "nuclear_recoil_scintillation_photons",
+        "nuclear_recoil_energy_deposit_MeV",
+    }
+    has_recoil_split = split_columns.issubset(frame.columns)
+    if not has_recoil_split:
+        for column in ("numPhotons", "eDep"):
+            if column not in frame.columns:
+                raise ValueError(
+                    "neutron scintillation correction requires either the "
+                    "recoil-split DUNE response columns or legacy CSV column "
+                    f"{column!r}"
+                )
 
     slope, intercept = _gamma_line(config)
     mode = str(config.get("mode", "legacy_post")).lower()
@@ -143,8 +154,32 @@ def apply_correction(
         raise ValueError("leff must be a mapping")
     result = frame.copy()
     raw_pe = pd.to_numeric(result[pe_column], errors="coerce").to_numpy(dtype=float)
-    raw_photons = pd.to_numeric(result["numPhotons"], errors="coerce").to_numpy(dtype=float)
-    edep_MeV = pd.to_numeric(result["eDep"], errors="coerce").to_numpy(dtype=float)
+    if has_recoil_split:
+        nr_pe = pd.to_numeric(
+            result["nuclear_recoil_num_pe"], errors="coerce"
+        ).to_numpy(dtype=float)
+        er_pe = pd.to_numeric(
+            result["electronic_recoil_num_pe"], errors="coerce"
+        ).to_numpy(dtype=float)
+        other_pe = pd.to_numeric(
+            result["other_num_pe"], errors="coerce"
+        ).to_numpy(dtype=float)
+        raw_photons = pd.to_numeric(
+            result["nuclear_recoil_scintillation_photons"], errors="coerce"
+        ).to_numpy(dtype=float)
+        edep_MeV = pd.to_numeric(
+            result["nuclear_recoil_energy_deposit_MeV"], errors="coerce"
+        ).to_numpy(dtype=float)
+    else:
+        nr_pe = raw_pe
+        er_pe = np.zeros(len(result), dtype=float)
+        other_pe = np.zeros(len(result), dtype=float)
+        raw_photons = pd.to_numeric(
+            result["numPhotons"], errors="coerce"
+        ).to_numpy(dtype=float)
+        edep_MeV = pd.to_numeric(
+            result["eDep"], errors="coerce"
+        ).to_numpy(dtype=float)
     edep_keV = 1000.0 * edep_MeV
 
     if mode == "simulation_native":
@@ -182,6 +217,9 @@ def apply_correction(
 
     valid = (
         np.isfinite(raw_pe)
+        & np.isfinite(nr_pe)
+        & np.isfinite(er_pe)
+        & np.isfinite(other_pe)
         & np.isfinite(raw_photons)
         & (raw_photons > 0)
         & np.isfinite(edep_MeV)
@@ -192,9 +230,26 @@ def apply_correction(
     factor = np.full(len(result), np.nan, dtype=float)
     corrected_pe = np.full(len(result), np.nan, dtype=float)
     factor[valid] = expected_target_photons[valid] / raw_photons[valid]
-    corrected_pe[valid] = raw_pe[valid] * factor[valid]
+    corrected_nr_pe = np.full(len(result), np.nan, dtype=float)
+    corrected_nr_pe[valid] = nr_pe[valid] * factor[valid]
+    if has_recoil_split:
+        no_nr_light = (
+            np.isfinite(nr_pe)
+            & np.isfinite(raw_photons)
+            & (nr_pe == 0)
+            & (raw_photons == 0)
+        )
+        corrected_nr_pe[no_nr_light] = 0.0
+        corrected_pe = er_pe + other_pe + corrected_nr_pe
+    else:
+        corrected_pe = corrected_nr_pe
 
     result["numPE_raw"] = raw_pe
+    if has_recoil_split:
+        result["numPE_electronic_recoil_raw"] = er_pe
+        result["numPE_nuclear_recoil_raw"] = nr_pe
+        result["numPE_other_raw"] = other_pe
+        result["numPE_nuclear_recoil_corrected"] = corrected_nr_pe
     result["neutron_scintillation_correction_mode"] = mode
     result["Leff"] = leff
     result["correction_energy_MeV"] = edep_MeV

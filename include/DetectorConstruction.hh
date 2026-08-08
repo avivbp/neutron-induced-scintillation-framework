@@ -314,6 +314,11 @@ public:
 
   void SetNeutronDetectors(const G4String& value) {
       std::vector<NeutronDetectorConfig> detectors;
+      const auto normalized = ToLower(value);
+      if (normalized.empty() || normalized == "none") {
+          fNeutronDetectors.clear();
+          return;
+      }
       std::stringstream entries(value);
       std::string entry;
       G4int index = 0;

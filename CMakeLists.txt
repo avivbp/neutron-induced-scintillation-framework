@@ -59,6 +59,17 @@ if(BUILD_TESTING)
            COMMAND ${Python3_EXECUTABLE} tests/test_config_tools.py)
   add_test(NAME EventTopologyTest
            COMMAND ${Python3_EXECUTABLE} tests/test_event_topology.py)
+  execute_process(
+      COMMAND ${Python3_EXECUTABLE} -c "import numpy, pandas"
+      RESULT_VARIABLE ANALYSIS_PYTHON_DEPS_AVAILABLE
+      OUTPUT_QUIET ERROR_QUIET)
+  if(ANALYSIS_PYTHON_DEPS_AVAILABLE EQUAL 0)
+    add_test(NAME NeutronScintillationCorrectionTest
+             COMMAND ${Python3_EXECUTABLE}
+                     tests/test_neutron_scintillation_correction.py)
+    set_tests_properties(NeutronScintillationCorrectionTest PROPERTIES
+                         WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+  endif()
   set_tests_properties(ConfigToolsTest EventTopologyTest PROPERTIES
                        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 endif()

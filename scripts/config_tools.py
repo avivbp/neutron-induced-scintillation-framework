@@ -273,6 +273,11 @@ def flatten_for_template(config: Mapping[str, Any], row: Mapping[str, Any]) -> D
         # Beam and event-selection cuts
         "primary_energy_MeV": float(deep_get(config, "beam.primary_energy_MeV", 2.5)),
         "tof_window_ns": tof_window_macro_value(config),
+        "tof_window_command": (
+            f"/det/setTOFWindowNs {tof_window_macro_value(config)}"
+            if detector_model == "nested_cell"
+            else "# No TOF window: box_cryostat response is untagged."
+        ),
 
         # LAr optics/scintillation
         "lar_absorption_length_cm": float(deep_get(config, "optics.lar.absorption_length_cm", 150.0)),
