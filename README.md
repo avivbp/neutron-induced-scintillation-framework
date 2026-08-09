@@ -428,6 +428,36 @@ config_id,top_pmts,bottom_pmts,sipm_rows,label
 DUNE00,0,0,0,dune_like_fixed_layout
 ```
 
+The box model automatically constructs six continuous physical TPB slabs
+between the active-LAr interior and the face-mounted optical detectors. The
+coating preserves the legacy cylinder parameters: `1.5 um` TPB thickness and a
+`0.89 mm` LAr gap between the detector's LAr-facing surface and the TPB face
+nearest the detector. The latter is the legacy `1.0 mm` TPB wall inset minus
+the legacy sensor depth (`0.01 mm` inset plus `0.1 mm` thickness). Because box
+sensor thickness and inset are configurable, each slab is moved inward as
+needed to preserve that gap; the YAML sensor dimensions themselves are not
+changed. The slabs meet without overlapping at box edges, and the geometry
+rejects configurations in which a slab would overlap an inset fiducial volume.
+
+The resulting optical order, looking from the active volume toward any box
+face, is:
+
+```text
+active LAr -> 1.5 um TPB -> 0.89 mm LAr gap -> PMT/SiPM -> wall
+```
+
+Thus a normally incident 128 nm LAr photon crosses the physical TPB material
+before it can reach a sensor. Geant4 `OpWLS` uses the same `WLSABSLENGTH`,
+`WLSCOMPONENT`, `WLSTIMECONSTANT`, and `WLSMEANNUMBERPHOTONS` values as the
+legacy cylinder; `optics.tpb.efficiency` controls the last property.
+
+`config/dune_like_box_full.yaml` is the X-ARAPUCA-style production-layout
+variant. It creates only 20 x 20 cm PMT-like tiles on the `+z` and `-z` faces,
+uses a flat effective PDE of `0.02`, and creates no independent SiPM layout.
+Its event count remains intentionally small until the user chooses the desired
+production statistics; set `run.n_events` and `run.n_threads` before a full
+run.
+
 Run the complete DUNE-like workflow:
 
 ```bash

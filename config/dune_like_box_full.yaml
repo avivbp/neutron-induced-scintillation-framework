@@ -1,7 +1,7 @@
 run:
   executable: ./LArLightSim
   build_dir: build-mt
-  output_dir: output/dune_like_14MeV
+  output_dir: output/dune_like_14MeV_full
   n_events: 10
   n_threads: 1
   macro_template: macros/template_run.mac
@@ -43,29 +43,14 @@ sensors:
     side_length_cm: 20.0
     active_size_cm: [20.0, 20.0]
     reflectivity: 0.20
-    response_mode: builtin_curve
-    pde: 0.266
-    top_pde: 0.266
-    bottom_pde: 0.266
-    qe_curve_file: none
-  sipm:
-    tile_size_cm: 10.0
-    active_size_cm: [10.0, 10.0]
-    reflectivity: 0.40
-    response_mode: builtin_curve
-    pde: 0.402
+    # Flat effective X-ARAPUCA response represented by a PMT-like surface.
+    response_mode: flat
+    pde: 0.02
+    top_pde: 0.02
+    bottom_pde: 0.02
     qe_curve_file: none
   layouts:
-    - id: long_wall_sipms
-      type: sipm
-      faces: [+x, -x, +y, -y]
-      pattern: grid
-      active_size_cm: [10.0, 10.0]
-      thickness_cm: 0.10
-      pitch_cm: [100.0, 100.0]
-      edge_clearance_cm: 25.0
-      inset_cm: 0.10
-    - id: endcap_pmts
+    - id: top_bottom_xarapucas
       type: pmt
       faces: [+z, -z]
       pattern: grid

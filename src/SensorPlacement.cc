@@ -1,5 +1,6 @@
 #include "SensorPlacement.hh"
 
+#include <array>
 #include <cmath>
 #include <stdexcept>
 
@@ -19,6 +20,15 @@ G4bool IsBoxFace(SensorSurface face)
 {
   return face >= SensorSurface::BoxPositiveX &&
          face <= SensorSurface::BoxNegativeZ;
+}
+
+std::size_t BoxFaceIndex(SensorSurface face)
+{
+  if (!IsBoxFace(face)) {
+    throw std::invalid_argument("surface is not a box face");
+  }
+  return static_cast<std::size_t>(face) -
+         static_cast<std::size_t>(SensorSurface::BoxPositiveX);
 }
 
 FaceFrame MakeFaceFrame(SensorSurface face, const G4ThreeVector& dimensions)
@@ -132,4 +142,83 @@ GenerateBoxFaceGridPlacements(const BoxFaceGridConfig& config)
   }
 
   return placements;
+}
+
+std::vector<BoxTPBSlabPlacement>
+GenerateBoxTPBSlabPlacements(const BoxTPBSlabConfig& config)
+{
+  if (config.boxDimensions.x() <= 0.0 ||
+      config.boxDimensions.y() <= 0.0 ||
+      config.boxDimensions.z() <= 0.0) {
+    throw std::invalid_argument("box dimensions must be positive");
+  }
+  if (config.thickness <= 0.0) {
+    throw std::invalid_argument("TPB thickness must be positive");
+  }
+  for (const auto inset : config.wallInsets) {
+    if (inset < 0.0) {
+      throw std::invalid_argument("TPB wall inset must be non-negative");
+    }
+  }
+
+  const auto depth = [&](SensorSurface face) {
+    return config.wallInsets[BoxFaceIndex(face)] + config.thickness;
+  };
+  const auto centerBetween = [](G4double low, G4double high) {
+    return 0.5 * (low + high);
+  };
+
+  const G4double hx = 0.5 * config.boxDimensions.x();
+  const G4double hy = 0.5 * config.boxDimensions.y();
+  const G4double hz = 0.5 * config.boxDimensions.z();
+  const G4double t = config.thickness;
+
+  const G4double xLow = -hx + depth(SensorSurface::BoxNegativeX);
+  const G4double xHigh = hx - depth(SensorSurface::BoxPositiveX);
+  const G4double yLow = -hy + depth(SensorSurface::BoxNegativeY);
+  const G4double yHigh = hy - depth(SensorSurface::BoxPositiveY);
+  const G4double zLow = -hz + depth(SensorSurface::BoxNegativeZ);
+  const G4double zHigh = hz - depth(SensorSurface::BoxPositiveZ);
+  if (xHigh <= xLow || yHigh <= yLow || zHigh <= zLow) {
+    throw std::invalid_argument("TPB slab depths leave no box interior");
+  }
+
+  // Partition the inner coating without overlaps: Z slabs span complete end
+  // faces, Y slabs stop at the Z slabs, and X slabs stop at both Y and Z.
+  // Adjacent pieces therefore meet at their edges while every ray normal to a
+  // coated box face crosses TPB before reaching a wall-mounted sensor.
+  return {
+      {SensorSurface::BoxPositiveX,
+       {hx - config.wallInsets[BoxFaceIndex(SensorSurface::BoxPositiveX)] -
+            0.5 * t,
+        centerBetween(yLow, yHigh), centerBetween(zLow, zHigh)},
+       {t, yHigh - yLow, zHigh - zLow}},
+      {SensorSurface::BoxNegativeX,
+       {-hx + config.wallInsets[BoxFaceIndex(SensorSurface::BoxNegativeX)] +
+             0.5 * t,
+        centerBetween(yLow, yHigh), centerBetween(zLow, zHigh)},
+       {t, yHigh - yLow, zHigh - zLow}},
+      {SensorSurface::BoxPositiveY,
+       {0.0,
+        hy - config.wallInsets[BoxFaceIndex(SensorSurface::BoxPositiveY)] -
+            0.5 * t,
+        centerBetween(zLow, zHigh)},
+       {config.boxDimensions.x(), t, zHigh - zLow}},
+      {SensorSurface::BoxNegativeY,
+       {0.0,
+        -hy + config.wallInsets[BoxFaceIndex(SensorSurface::BoxNegativeY)] +
+              0.5 * t,
+        centerBetween(zLow, zHigh)},
+       {config.boxDimensions.x(), t, zHigh - zLow}},
+      {SensorSurface::BoxPositiveZ,
+       {0.0, 0.0,
+        hz - config.wallInsets[BoxFaceIndex(SensorSurface::BoxPositiveZ)] -
+            0.5 * t},
+       {config.boxDimensions.x(), config.boxDimensions.y(), t}},
+      {SensorSurface::BoxNegativeZ,
+       {0.0, 0.0,
+        -hz + config.wallInsets[BoxFaceIndex(SensorSurface::BoxNegativeZ)] +
+              0.5 * t},
+       {config.boxDimensions.x(), config.boxDimensions.y(), t}},
+  };
 }

@@ -1429,6 +1429,7 @@ G4VPhysicalVolume* DetectorConstruction::ConstructBoxCryostat()
   innerCellLogic = activeLogic;
   innerCellPhysi = activePhys;
 
+  BuildBoxTPBSlabs(activeLogic);
   BuildBoxSensorLayouts(activeLogic, activePhys);
   ApplySensorConfig();
 
@@ -1437,6 +1438,78 @@ G4VPhysicalVolume* DetectorConstruction::ConstructBoxCryostat()
          << fBoxFiducialMargin / CLHEP::cm << " cm, and shell thickness "
          << fBoxCryostatThickness / CLHEP::cm << " cm." << G4endl;
   return fPhysiWorld;
+}
+
+void DetectorConstruction::BuildBoxTPBSlabs(G4LogicalVolume* activeLogic)
+{
+  // Preserve the legacy cylinder coating exactly: 1.5 um of TPB, with its
+  // wall-facing surface 0.89 mm in front of the sensor's LAr-facing surface.
+  // In the legacy geometry this follows from a 1.0 mm TPB wall inset and a
+  // sensor occupying 0.01--0.11 mm inward from the wall.
+  const G4double tTPB = 1.5 * CLHEP::um;
+  const G4double legacyTPBWallInset = 1.0 * CLHEP::mm;
+  const G4double legacySensorWallInset = 0.01 * CLHEP::mm;
+  const G4double legacySensorThickness = 0.1 * CLHEP::mm;
+  const G4double legacySensorToTPBGap =
+      legacyTPBWallInset -
+      (legacySensorWallInset + legacySensorThickness);
+
+  BoxTPBSlabConfig coating;
+  coating.boxDimensions = fBoxDimensions;
+  coating.thickness = tTPB;
+  coating.wallInsets.fill(legacyTPBWallInset);
+
+  const auto faceIndex = [](SensorSurface face) {
+    return static_cast<std::size_t>(face) -
+           static_cast<std::size_t>(SensorSurface::BoxPositiveX);
+  };
+  for (const auto& layout : fBoxSensorLayouts) {
+    const G4double sensorFrontDepth = layout.inset + layout.thickness;
+    const G4double requiredTPBInset =
+        sensorFrontDepth + legacySensorToTPBGap;
+    for (const auto face : layout.faces) {
+      auto& wallInset = coating.wallInsets[faceIndex(face)];
+      wallInset = std::max(wallInset, requiredTPBInset);
+    }
+  }
+
+  if (fBoxFiducialMargin.mag2() > 0.0) {
+    const std::array<G4double, 6> margins = {
+        fBoxFiducialMargin.x(), fBoxFiducialMargin.x(),
+        fBoxFiducialMargin.y(), fBoxFiducialMargin.y(),
+        fBoxFiducialMargin.z(), fBoxFiducialMargin.z()};
+    for (std::size_t index = 0; index < coating.wallInsets.size(); ++index) {
+      if (coating.wallInsets[index] + tTPB >= margins[index]) {
+        G4Exception("DetectorConstruction::BuildBoxTPBSlabs",
+                    "BoxTPBFiducialOverlap", FatalException,
+                    "Fiducial margin is too small for the box TPB coating.");
+      }
+    }
+  }
+
+  const auto placements = GenerateBoxTPBSlabPlacements(coating);
+  fBoxTPB_PV.clear();
+  for (std::size_t index = 0; index < placements.size(); ++index) {
+    const auto& placement = placements[index];
+    const auto name = G4String("BoxTPB_") + std::to_string(index);
+    auto solid = new G4Box(
+        name + "_solid", 0.5 * placement.dimensions.x(),
+        0.5 * placement.dimensions.y(), 0.5 * placement.dimensions.z());
+    auto logic = new G4LogicalVolume(solid, tpbMat, name + "_logic");
+    auto physical = new G4PVPlacement(
+        nullptr, placement.position, logic, name + "_pv", activeLogic,
+        false, static_cast<G4int>(index), true);
+    fBoxTPB_PV.push_back(physical);
+
+    auto vis = new G4VisAttributes(G4Colour(0.2, 0.9, 0.9, 0.35));
+    vis->SetForceSolid(true);
+    logic->SetVisAttributes(vis);
+    fVisAttributes.push_back(vis);
+  }
+
+  G4cout << "[TPB] Built six box-face slabs with legacy thickness "
+         << tTPB / CLHEP::um << " um and legacy sensor-to-TPB gap "
+         << legacySensorToTPBGap / CLHEP::mm << " mm." << G4endl;
 }
 
 void DetectorConstruction::BuildBoxSensorLayouts(

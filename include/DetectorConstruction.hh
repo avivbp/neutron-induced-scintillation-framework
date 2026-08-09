@@ -158,6 +158,7 @@ private:
 
   std::vector<G4VPhysicalVolume*> fBoxSensor_PV;
   std::vector<std::pair<G4OpticalSurface*, SensorType>> fBoxSensor_Surf;
+  std::vector<G4VPhysicalVolume*> fBoxTPB_PV;
 
   G4int fSiPM_TilesPerRow = 0; // computed
 
@@ -578,6 +579,7 @@ private:
   void ComputeGeomParameters();
   void ChangeGeometry();
   G4VPhysicalVolume* ConstructBoxCryostat();
+  void BuildBoxTPBSlabs(G4LogicalVolume* activeLogic);
   void BuildBoxSensorLayouts(G4LogicalVolume* activeLogic,
                              G4VPhysicalVolume* activePhys);
 

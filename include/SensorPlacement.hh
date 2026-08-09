@@ -6,6 +6,7 @@
 #include "G4ThreeVector.hh"
 #include "globals.hh"
 
+#include <array>
 #include <vector>
 
 class G4LogicalVolume;
@@ -68,5 +69,24 @@ struct BoxFaceGridConfig {
 
 std::vector<SensorPlacement>
 GenerateBoxFaceGridPlacements(const BoxFaceGridConfig& config);
+
+// Six non-overlapping TPB slabs forming an inner coating for a box.  Each
+// wallInset is the distance from the corresponding box wall to the slab face
+// nearest that wall.  Different values are supported so the coating can sit
+// in front of configurable sensor depths on each face.
+struct BoxTPBSlabConfig {
+  G4ThreeVector boxDimensions;
+  std::array<G4double, 6> wallInsets{};
+  G4double thickness = 0.0;
+};
+
+struct BoxTPBSlabPlacement {
+  SensorSurface face = SensorSurface::BoxPositiveX;
+  G4ThreeVector position;
+  G4ThreeVector dimensions;
+};
+
+std::vector<BoxTPBSlabPlacement>
+GenerateBoxTPBSlabPlacements(const BoxTPBSlabConfig& config);
 
 #endif

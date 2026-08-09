@@ -95,5 +95,29 @@ int main()
   }
   Require(rejected, "overlapping sensor pitch was not rejected");
 
+  BoxTPBSlabConfig coating;
+  coating.boxDimensions = {100.0, 60.0, 40.0};
+  coating.wallInsets = {2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
+  coating.thickness = 0.5;
+  const auto slabs = GenerateBoxTPBSlabPlacements(coating);
+  Require(slabs.size() == 6, "box coating did not produce six slabs");
+  Require(Near(slabs[0].position.x(), 47.75), "incorrect +x TPB position");
+  Require(Near(slabs[1].position.x(), -46.75), "incorrect -x TPB position");
+  Require(Near(slabs[2].position.y(), 25.75), "incorrect +y TPB position");
+  Require(Near(slabs[3].position.y(), -24.75), "incorrect -y TPB position");
+  Require(Near(slabs[4].position.z(), 13.75), "incorrect +z TPB position");
+  Require(Near(slabs[5].position.z(), -12.75), "incorrect -z TPB position");
+  Require(Near(slabs[0].dimensions.y(), 50.0),
+          "x-face TPB did not stop at y slabs");
+  Require(Near(slabs[0].dimensions.z(), 26.0),
+          "x-face TPB did not stop at z slabs");
+  Require(Near(slabs[2].dimensions.x(), 100.0),
+          "y-face TPB did not span x");
+  Require(Near(slabs[2].dimensions.z(), 26.0),
+          "y-face TPB did not stop at z slabs");
+  Require(Near(slabs[4].dimensions.x(), 100.0) &&
+              Near(slabs[4].dimensions.y(), 60.0),
+          "z-face TPB did not span complete face");
+
   return 0;
 }
